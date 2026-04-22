@@ -77,6 +77,21 @@ tracker_max_age: int = int_slider_field(30, 5, 200, 1, "Max Track Age", "Frames 
 
 ---
 
+## Memory Usage
+
+A higher `tracker_max_age` means more lost tracks can be simultaneously alive in memory. Each lost track holds:
+- Kalman filter state (a few floats)
+- ReID appearance feature vector (~512 float32 values ≈ 2 KB)
+- Bounding box history
+
+In a typical retail store with ~10 people, even if all are simultaneously occluded, that is ~20 KB of extra memory — completely irrelevant.
+
+Memory only becomes a concern with hundreds of simultaneously lost tracks (e.g. extremely crowded scenes), and even then the impact is MB-level, not GB-level.
+
+**Do not factor RAM into your `tracker_max_age` decision.** Set it based purely on how long people typically disappear behind shelves.
+
+---
+
 ## ReID and Re-identification
 
 DeepSORT uses an **OSNet** appearance model (ReID) to try to re-match a person even after their track has been deleted. If someone reappears and looks visually similar, the same ID may be reassigned.
