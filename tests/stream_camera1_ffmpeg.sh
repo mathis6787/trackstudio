@@ -34,6 +34,7 @@ if [ ! -f "$VIDEO_FILE" ]; then
             -tune zerolatency \
             -g 30 \
             -b:v 2048k \
+            -an \
             -f flv \
             rtmp://${SERVER_IP}:1935/camera1
 
@@ -52,6 +53,7 @@ else
             -r 15 \
             -g 30 \
             -b:v 2048k \
+            -an \
             -f flv \
             rtmp://${SERVER_IP}:1935/camera1
 
