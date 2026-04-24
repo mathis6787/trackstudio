@@ -19,6 +19,15 @@ TrackStudio now separates detection from tracking:
 - `deepsort`
 - `bytetrack`
 
+Planned trackers may include `botsort`. BoT-SORT should be implemented as a separate tracker component so it can consume detections from any detector, for example:
+
+```text
+rfdetr -> botsort
+yolo   -> botsort
+```
+
+If YOLO later becomes both the primary detector and the production tracking path, it may be worth adding a separate YOLO-native fast path that uses Ultralytics' built-in BoT-SORT integration. That path should be treated as an optimized YOLO-specific mode, not as the default TrackStudio tracker abstraction.
+
 The vision pipeline runs independently of the source stream FPS:
 
 ```text
@@ -31,9 +40,9 @@ Changing the tracker in the UI updates the config immediately, but the active tr
 
 ---
 
-## DeepSORT vs ByteTrack
+## DeepSORT vs ByteTrack vs BoT-SORT
 
-DeepSORT and ByteTrack do not expose the same settings because they associate detections differently.
+DeepSORT, ByteTrack, and BoT-SORT do not expose the same settings because they associate detections differently.
 
 DeepSORT uses:
 
@@ -48,6 +57,10 @@ ByteTrack uses:
 - detection confidence, including lower-confidence detections for re-association
 
 ByteTrack in this project does **not** use ReID appearance features. That means DeepSORT settings such as `Max Cosine Distance` and `ReID Matching Threshold` are not relevant for ByteTrack.
+
+BoT-SORT is similar to ByteTrack but can add stronger association logic, optional appearance/ReID matching, and optional camera motion compensation. In TrackStudio, the clean implementation should be detector-agnostic: it should accept normalized `Detection` objects from RF-DETR, YOLO, or any future detector.
+
+If the detector is specifically YOLO and the goal is a YOLO-only optimized production path, Ultralytics' native `model.track(..., tracker="botsort.yaml")` flow may be better integrated. That should be documented and implemented as a YOLO-specific shortcut if needed, because it couples detection and tracking again.
 
 ---
 
