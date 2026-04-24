@@ -1,65 +1,89 @@
-"""
-TrackStudio Tracker Registry
+"""Single-camera tracker interfaces and registry."""
 
-Dynamic registration system for vision trackers.
-"""
+from __future__ import annotations
 
 import logging
 
-from .base import BEVTrack, Detection, Track, VisionResult, VisionTracker
-from .dummy import DummyVisionTracker as DummyTracker
-from .rfdetr import RFDETRTracker
+from trackstudio.vision_types import BEVTrack, Detection, Track, VisionResult
+
+from .base import BaseTrackerConfig, SingleCameraTracker, VisionTracker
 
 logger = logging.getLogger(__name__)
 
 
 class TrackerRegistry:
-    """Registry for vision trackers"""
+    """Lazy registry for built-in single-camera trackers."""
 
-    def __init__(self):
-        self._trackers: dict[str, type[VisionTracker]] = {}
-        self._register_defaults()
+    def __init__(self) -> None:
+        self._trackers: dict[str, type[SingleCameraTracker] | None] = {
+            "deepsort": None,
+            "bytetrack": None,
+            "dummy": None,
+        }
 
-    def _register_defaults(self):
-        """Register default trackers"""
-        self.register("rfdetr", RFDETRTracker)
-        self.register("dummy", DummyTracker)
-
-    def register(self, name: str, tracker_class: type[VisionTracker]):
-        """Register a new tracker"""
-        if not issubclass(tracker_class, VisionTracker):
-            raise ValueError(f"{tracker_class} must inherit from VisionTracker")
-
+    def register(self, name: str, tracker_class: type[SingleCameraTracker]) -> None:
+        if not issubclass(tracker_class, SingleCameraTracker):
+            raise ValueError(f"{tracker_class} must inherit from SingleCameraTracker")
         self._trackers[name] = tracker_class
         logger.info(f"Registered tracker: {name}")
 
-    def get(self, name: str) -> type[VisionTracker]:
-        """Get a tracker class by name"""
+    def get(self, name: str) -> type[SingleCameraTracker]:
         if name not in self._trackers:
             raise ValueError(f"Unknown tracker: {name}. Available: {list(self._trackers.keys())}")
-        return self._trackers[name]
 
-    def create(self, name: str, **kwargs) -> VisionTracker:
-        """Create a tracker instance"""
-        tracker_class = self.get(name)
-        return tracker_class(**kwargs)
+        tracker_class = self._trackers[name]
+        if tracker_class is None:
+            if name == "deepsort":
+                from .deepsort import DeepSORTSingleCameraTracker  # noqa: PLC0415
+
+                tracker_class = DeepSORTSingleCameraTracker
+            elif name == "bytetrack":
+                from .bytetrack import ByteTrackSingleCameraTracker  # noqa: PLC0415
+
+                tracker_class = ByteTrackSingleCameraTracker
+            elif name == "dummy":
+                from .dummy import DummySingleCameraTracker  # noqa: PLC0415
+
+                tracker_class = DummySingleCameraTracker
+            self._trackers[name] = tracker_class
+
+        return tracker_class
+
+    def create(self, name: str, **kwargs) -> SingleCameraTracker:
+        return self.get(name)(**kwargs)
 
     def list_available(self) -> list[str]:
-        """List available tracker names"""
         return list(self._trackers.keys())
 
 
-# Global registry instance
 tracker_registry = TrackerRegistry()
 
-# Export commonly used items
 __all__ = [
+    "BaseTrackerConfig",
+    "SingleCameraTracker",
     "VisionTracker",
     "VisionResult",
     "Detection",
     "Track",
     "BEVTrack",
-    "RFDETRTracker",
-    "DummyTracker",
     "tracker_registry",
+    "DeepSORTSingleCameraTracker",
+    "ByteTrackSingleCameraTracker",
+    "DummySingleCameraTracker",
 ]
+
+
+def __getattr__(name: str):
+    if name == "DeepSORTSingleCameraTracker":
+        from .deepsort import DeepSORTSingleCameraTracker  # noqa: PLC0415
+
+        return DeepSORTSingleCameraTracker
+    if name == "ByteTrackSingleCameraTracker":
+        from .bytetrack import ByteTrackSingleCameraTracker  # noqa: PLC0415
+
+        return ByteTrackSingleCameraTracker
+    if name == "DummySingleCameraTracker":
+        from .dummy import DummySingleCameraTracker  # noqa: PLC0415
+
+        return DummySingleCameraTracker
+    raise AttributeError(name)

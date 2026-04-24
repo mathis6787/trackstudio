@@ -24,7 +24,10 @@ def set_vision_api(api):
     """Set the VisionAPI instance to use"""
     global vision_api  # noqa: PLW0603
     vision_api = api
-    logger.info(f"🔗 Cameras API received VisionAPI with {api.tracker.__class__.__name__}")
+    logger.info(
+        f"🔗 Cameras API received VisionAPI with "
+        f"{api.detector.__class__.__name__} and {api.tracker.__class__.__name__}"
+    )
 
 
 class CameraInfo(BaseModel):
@@ -291,13 +294,22 @@ async def get_tracking_status():
         stats = stream_combiner_manager.get_vision_statistics()
         latest_result = stream_combiner_manager.get_latest_vision_result()
 
-        # Get tracker type from VisionAPI
+        # Get detector/tracker type from VisionAPI
+        detector_type = None
         tracker_type = None
+        if vision_api and hasattr(vision_api, "detector"):
+            detector_type = vision_api.detector.__class__.__name__
         if vision_api and hasattr(vision_api, "tracker"):
             tracker_type = vision_api.tracker.__class__.__name__
 
-        logger.info(f"📡 API: Tracking status check - enabled: {is_enabled}, tracker: {tracker_type}")
-        print(f"📡 API: Tracking status check - enabled: {is_enabled}, tracker: {tracker_type}")
+        logger.info(
+            f"📡 API: Tracking status check - enabled: {is_enabled}, "
+            f"detector: {detector_type}, tracker: {tracker_type}"
+        )
+        print(
+            f"📡 API: Tracking status check - enabled: {is_enabled}, "
+            f"detector: {detector_type}, tracker: {tracker_type}"
+        )
 
         if latest_result:
             # Count detections from all streams
@@ -310,6 +322,7 @@ async def get_tracking_status():
 
         return {
             "enabled": is_enabled,
+            "detector_type": detector_type,
             "tracker_type": tracker_type,
             "statistics": stats,
             "has_latest_result": latest_result is not None,

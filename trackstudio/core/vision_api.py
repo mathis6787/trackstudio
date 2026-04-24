@@ -6,17 +6,21 @@ processing into the WebRTC video stream. It's designed to be easily extensible
 with different tracking algorithms through submodules.
 """
 
+from __future__ import annotations
+
 import logging
 import time
 from typing import Any
 
 import numpy as np
 
+from ..bev import BEVTransformer
+from ..detectors import VisionDetector
 from ..mergers import VisionMerger
-from ..trackers import VisionTracker
-from ..trackers.base import VisionResult
+from ..trackers import SingleCameraTracker
 from ..vision_config import VisionSystemConfig
 from ..vision_factory import create_vision_system  # noqa: PLC0415
+from ..vision_types import VisionResult
 
 logger = logging.getLogger(__name__)
 
@@ -27,19 +31,26 @@ class VisionAPI:
     def __init__(
         self,
         config: VisionSystemConfig | None = None,
-        tracker: VisionTracker | None = None,
+        detector: VisionDetector | None = None,
+        tracker: SingleCameraTracker | None = None,
+        bev_transformer: BEVTransformer | None = None,
         merger: VisionMerger | None = None,
     ):
-        # If no tracker provided, create using factory
-        if tracker is None or merger is None:
+        if detector is None or tracker is None or bev_transformer is None or merger is None:
+            detector_type = getattr(config, "detector_type", None) if config else None
             tracker_type = getattr(config, "tracker_type", None) if config else None
-            created_tracker, created_merger, created_config = create_vision_system(tracker_type)
+            merger_type = getattr(config, "merger_type", None) if config else None
+            components = create_vision_system(detector_type, tracker_type, merger_type)
 
-            self.tracker = tracker or created_tracker
-            self.merger = merger or created_merger
-            self.config = config or created_config
+            self.detector = detector or components.detector
+            self.tracker = tracker or components.tracker
+            self.bev_transformer = bev_transformer or components.bev_transformer
+            self.merger = merger or components.merger
+            self.config = config or components.config
         else:
+            self.detector = detector
             self.tracker = tracker
+            self.bev_transformer = bev_transformer
             self.merger = merger
             self.config = config or VisionSystemConfig()
 
@@ -55,9 +66,10 @@ class VisionAPI:
         self.cached_vision_result: VisionResult | None = None
         self.vision_frame_counter = 0  # Separate counter for vision frames
 
+        detector_name = self.detector.__class__.__name__
         tracker_name = self.tracker.__class__.__name__
         merger_name = self.merger.__class__.__name__
-        logger.info(f"🧠 VisionAPI initialized with {tracker_name} and {merger_name}")
+        logger.info(f"🧠 VisionAPI initialized with {detector_name}, {tracker_name} and {merger_name}")
         logger.info(f"🎯 Vision processing FPS: {self.vision_fps} (UI stream can run at full speed)")
 
     def enable_tracking(self):
@@ -186,7 +198,7 @@ class VisionAPI:
             for stream_id, frame in stream_frames.items():
                 # ⏱️ Detection timing
                 detection_start = time.time()
-                detections = self.tracker.detect(frame, camera_id=stream_id)
+                detections = self.detector.detect(frame, camera_id=stream_id)
                 detection_times[stream_id] = (time.time() - detection_start) * 1000
                 all_detections[stream_id] = detections
 
@@ -208,7 +220,7 @@ class VisionAPI:
                     logger.debug(f"📍 Adding {len(tracks)} tracks from stream {stream_id} to BEV transformation")
 
             logger.debug(f"🗺️ Total tracks for BEV transform: {len(combined_tracks)}")
-            bev_tracks = self.tracker.transform_to_bev(combined_tracks)
+            bev_tracks = self.bev_transformer.transform_to_bev(combined_tracks)
             logger.debug(f"✅ BEV transform result: {len(bev_tracks)} BEV tracks")
             step4_time = (time.time() - step4_start) * 1000
 
@@ -323,6 +335,7 @@ class VisionAPI:
                 "avg_processing_time_ms": 0.0,
                 "max_processing_time_ms": 0.0,
                 "min_processing_time_ms": 0.0,
+                "detector_stats": self.detector.get_statistics() if self.detector else {},
                 "cross_camera_merging": merger_stats,
                 "tracker_stats": self.tracker.get_statistics() if self.tracker else {},
             }
@@ -339,22 +352,28 @@ class VisionAPI:
             "avg_processing_time_ms": sum(self.processing_times) / len(self.processing_times),
             "max_processing_time_ms": max(self.processing_times),
             "min_processing_time_ms": min(self.processing_times),
+            "detector_stats": self.detector.get_statistics() if self.detector else {},
             "cross_camera_merging": merger_stats,
             "tracker_stats": self.tracker.get_statistics() if self.tracker else {},
         }
 
-    def set_tracker(self, tracker: VisionTracker):
+    def set_detector(self, detector: VisionDetector):
+        """Set a new detector."""
+        self.detector = detector
+        logger.info(f"🔄 Vision detector changed to: {detector.__class__.__name__}")
+
+    def set_tracker(self, tracker: SingleCameraTracker):
         """Set a new vision tracker (for swapping algorithms)"""
         self.tracker = tracker
         logger.info(f"🔄 Vision tracker changed to: {tracker.__class__.__name__}")
 
     def update_homography(self, camera_id: int, homography_matrix: np.ndarray):
         """Update homography matrix for a specific camera"""
-        calibration = getattr(self.tracker, "calibration", None)
+        calibration = getattr(self.bev_transformer, "calibration", None)
         if calibration:
             calibration.update_homography(camera_id, homography_matrix)
         else:
-            logger.warning(f"Tracker {self.tracker.__class__.__name__} does not support calibration")
+            logger.warning("BEV transformer does not support calibration")
 
     # Calibration delegation methods
     def calibrate_camera(
@@ -364,17 +383,17 @@ class VisionAPI:
         bev_points: list[tuple[float, float]],
         bev_size: int = 400,
     ) -> tuple[bool, str, np.ndarray | None]:
-        """Delegate calibration to the tracker's calibration module"""
-        calibration = getattr(self.tracker, "calibration", None)
+        """Delegate calibration to the BEV transformer's calibration module"""
+        calibration = getattr(self.bev_transformer, "calibration", None)
         if calibration:
             return calibration.calibrate_camera(camera_id, image_points, bev_points, bev_size)
-        return False, "Tracker does not support calibration", None
+        return False, "BEV transformer does not support calibration", None
 
     def transform_image_with_homography(
         self, image: np.ndarray, camera_id: int, output_size: tuple[int, int] = (400, 400)
     ) -> np.ndarray | None:
-        """Delegate image transformation to the tracker's calibration module"""
-        calibration = getattr(self.tracker, "calibration", None)
+        """Delegate image transformation to the BEV transformer's calibration module"""
+        calibration = getattr(self.bev_transformer, "calibration", None)
         if calibration:
             return calibration.transform_image_with_homography(image, camera_id, output_size)
         return None
@@ -387,31 +406,31 @@ class VisionAPI:
         homography_matrix: np.ndarray,
         bev_size: int = 400,
     ):
-        """Delegate calibration data saving to the tracker's calibration module"""
-        calibration = getattr(self.tracker, "calibration", None)
+        """Delegate calibration data saving to the BEV transformer's calibration module"""
+        calibration = getattr(self.bev_transformer, "calibration", None)
         if calibration:
             calibration.save_calibration_data(camera_id, image_points, bev_points, homography_matrix, bev_size)
         else:
-            logger.warning("Tracker does not support calibration data saving")
+            logger.warning("BEV transformer does not support calibration data saving")
 
     def load_calibration_data(self):
-        """Delegate calibration data loading to the tracker's calibration module"""
-        calibration = getattr(self.tracker, "calibration", None)
+        """Delegate calibration data loading to the BEV transformer's calibration module"""
+        calibration = getattr(self.bev_transformer, "calibration", None)
         if calibration:
             return calibration.load_calibration_data()
         return {}
 
     def clear_calibration_data(self):
-        """Delegate calibration data clearing to the tracker's calibration module"""
-        calibration = getattr(self.tracker, "calibration", None)
+        """Delegate calibration data clearing to the BEV transformer's calibration module"""
+        calibration = getattr(self.bev_transformer, "calibration", None)
         if calibration:
             calibration.clear_calibration_data()
         else:
-            logger.warning("Tracker does not support calibration data clearing")
+            logger.warning("BEV transformer does not support calibration data clearing")
 
     def get_calibration_status(self) -> dict[str, Any]:
-        """Delegate calibration status retrieval to the tracker's calibration module"""
-        calibration = getattr(self.tracker, "calibration", None)
+        """Delegate calibration status retrieval to the BEV transformer's calibration module"""
+        calibration = getattr(self.bev_transformer, "calibration", None)
         if calibration:
             return calibration.get_calibration_status()
         return {
@@ -426,23 +445,27 @@ class VisionAPI:
         if self.config:
             schema = self.config.model_json_schema()
 
-            # Filter schema to only show currently active tracker/merger configs
+            # Filter schema to only show currently active detector/tracker/merger configs
             if "properties" in schema:
+                current_detector = self.config.detector_type
                 current_tracker = self.config.tracker_type
                 current_merger = self.config.merger_type
 
                 # Log what we're filtering
                 all_props = list(schema["properties"].keys())
                 logger.info(
-                    f"📋 Config schema filtering: active tracker='{current_tracker}', merger='{current_merger}'"
+                    f"📋 Config schema filtering: active detector='{current_detector}', "
+                    f"tracker='{current_tracker}', merger='{current_merger}'"
                 )
                 logger.debug(f"   All properties: {all_props}")
 
                 # Keep only relevant properties
                 filtered_properties = {}
 
-                # REMOVED: We no longer include tracker_type and merger_type selectors
-                # Users shouldn't change tracker type from config UI
+                # Keep only the currently active detector config
+                active_detector_key = f"{current_detector}_detector"
+                if active_detector_key in schema["properties"]:
+                    filtered_properties[active_detector_key] = schema["properties"][active_detector_key]
 
                 # Keep only the currently active tracker config
                 active_tracker_key = f"{current_tracker}_tracker"
@@ -513,6 +536,10 @@ class VisionAPI:
         self.config = VisionSystemConfig(**current_config_dict)
 
         # Pass the updated sub-configs to the respective components
+        if self.detector:
+            detector_config = self.config.get_detector_config()
+            self.detector.update_config(detector_config.model_dump())
+
         if self.tracker:
             tracker_config = self.config.get_tracker_config()
             self.tracker.update_config(tracker_config.model_dump())
@@ -549,10 +576,10 @@ class VisionAPI:
             except Exception as e:
                 logger.warning(f"⚠️ Could not preserve calibration data: {e}")
 
-        # Get calibration file path from current tracker
+        # Get calibration file path from current BEV transformer
         calibration_file = None
-        if hasattr(self.tracker, "calibration") and hasattr(self.tracker.calibration, "calibration_file"):
-            calibration_file = self.tracker.calibration.calibration_file
+        if hasattr(self.bev_transformer, "calibration") and hasattr(self.bev_transformer.calibration, "calibration_file"):
+            calibration_file = self.bev_transformer.calibration.calibration_file
             logger.info(f"💾 Preserved calibration file path: {calibration_file}")
 
         # Temporarily disable tracking
@@ -565,30 +592,34 @@ class VisionAPI:
         self.cached_vision_result = None
         self.processing_times.clear()
 
-        # Recreate tracker and merger with current configuration
+        # Recreate detector, tracker, BEV transformer and merger with current configuration
         try:
             from ..vision_factory import create_vision_system  # noqa: PLC0415
 
-            tracker_type = getattr(self.config, "tracker_type", "rfdetr")
+            detector_type = getattr(self.config, "detector_type", "rfdetr")
+            tracker_type = getattr(self.config, "tracker_type", "deepsort")
             merger_type = getattr(self.config, "merger_type", "bev_cluster")
 
-            logger.info(f"🏭 Creating new tracker: {tracker_type}, merger: {merger_type}")
-            new_tracker, new_merger, _ = create_vision_system(tracker_type, merger_type, calibration_file)
+            logger.info(f"🏭 Creating new detector: {detector_type}, tracker: {tracker_type}, merger: {merger_type}")
+            components = create_vision_system(detector_type, tracker_type, merger_type, calibration_file)
 
             # Replace old components
+            old_detector_name = self.detector.__class__.__name__
             old_tracker_name = self.tracker.__class__.__name__
             old_merger_name = self.merger.__class__.__name__
 
-            self.tracker = new_tracker
-            self.merger = new_merger
+            self.detector = components.detector
+            self.tracker = components.tracker
+            self.bev_transformer = components.bev_transformer
+            self.merger = components.merger
 
-            logger.info(f"✅ Replaced {old_tracker_name} -> {new_tracker.__class__.__name__}")
-            logger.info(f"✅ Replaced {old_merger_name} -> {new_merger.__class__.__name__}")
+            logger.info(f"✅ Replaced {old_detector_name} -> {self.detector.__class__.__name__}")
+            logger.info(f"✅ Replaced {old_tracker_name} -> {self.tracker.__class__.__name__}")
+            logger.info(f"✅ Replaced {old_merger_name} -> {self.merger.__class__.__name__}")
 
             # Restore calibration data if preserved
             if preserve_calibration and calibration_data:
                 try:
-                    # Load homography matrices back into the new tracker
                     for camera_key, cam_data in calibration_data.items():
                         if camera_key.startswith("camera") and "homography_matrix" in cam_data:
                             camera_id = int(camera_key.replace("camera", ""))
@@ -601,6 +632,10 @@ class VisionAPI:
             # Apply current configuration to new components
             if self.config:
                 try:
+                    detector_config = self.config.get_detector_config()
+                    self.detector.update_config(detector_config.model_dump())
+                    logger.info("⚙️ Applied current detector configuration")
+
                     tracker_config = self.config.get_tracker_config()
                     self.tracker.update_config(tracker_config.model_dump())
                     logger.info("⚙️ Applied current tracker configuration")
@@ -628,21 +663,25 @@ class VisionAPI:
             return False
 
     def get_homography_matrix(self, camera_id: int) -> np.ndarray | None:
-        """Delegate homography matrix retrieval to the tracker's calibration module"""
-        calibration = getattr(self.tracker, "calibration", None)
+        """Delegate homography matrix retrieval to the BEV transformer's calibration module"""
+        calibration = getattr(self.bev_transformer, "calibration", None)
         if calibration:
             return calibration.get_homography_matrix(camera_id)
         return None
 
 
 def create_vision_api(
-    tracker_type: str | None = None, merger_type: str | None = None, calibration_file: str | None = None
+    detector_type: str | None = None,
+    tracker_type: str | None = None,
+    merger_type: str | None = None,
+    calibration_file: str | None = None,
 ) -> VisionAPI:
     """
-    Create a new VisionAPI instance with specified tracker and merger types.
+    Create a new VisionAPI instance with specified detector, tracker and merger types.
 
     Args:
-        tracker_type: Type of tracker to use ("rfdetr", "dummy", or None for default)
+        detector_type: Type of detector to use ("rfdetr", "dummy", or None for default)
+        tracker_type: Type of tracker to use ("deepsort", "bytetrack", "dummy", or None for default)
         merger_type: Type of merger to use ("bev_cluster", or None for default)
         calibration_file: Optional path to calibration data file
 
@@ -651,17 +690,31 @@ def create_vision_api(
     """
     from trackstudio.vision_factory import create_vision_system  # noqa: PLC0415
 
-    logger.info(f"🆕 Creating VisionAPI with tracker: {tracker_type or 'default'}")
-    tracker, merger, config = create_vision_system(tracker_type, merger_type, calibration_file)
-    api = VisionAPI(config=config, tracker=tracker, merger=merger)
+    logger.info(
+        f"🆕 Creating VisionAPI with detector: {detector_type or 'default'}, tracker: {tracker_type or 'default'}"
+    )
+    components = create_vision_system(detector_type, tracker_type, merger_type, calibration_file)
+    api = VisionAPI(
+        config=components.config,
+        detector=components.detector,
+        tracker=components.tracker,
+        bev_transformer=components.bev_transformer,
+        merger=components.merger,
+    )
 
-    logger.info(f"✅ VisionAPI created with actual tracker: {api.tracker.__class__.__name__}")
+    logger.info(
+        f"✅ VisionAPI created with detector: {api.detector.__class__.__name__}, "
+        f"tracker: {api.tracker.__class__.__name__}"
+    )
     return api
 
 
 # Backward compatibility
 def get_vision_api(
-    tracker_type: str | None = None, merger_type: str | None = None, calibration_file: str | None = None
+    detector_type: str | None = None,
+    tracker_type: str | None = None,
+    merger_type: str | None = None,
+    calibration_file: str | None = None,
 ) -> VisionAPI:
     """Create a new VisionAPI instance (backward compatibility)"""
-    return create_vision_api(tracker_type, merger_type, calibration_file)
+    return create_vision_api(detector_type, tracker_type, merger_type, calibration_file)

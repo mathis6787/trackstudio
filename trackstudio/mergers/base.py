@@ -5,12 +5,14 @@ This module defines the abstract base class for cross-camera tracking algorithms
 A merger processes BEV tracks from multiple camera trackers to create unified global tracks.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from typing import Any
 
 import numpy as np
 
-from trackstudio.trackers.base import BEVTrack
+from trackstudio.vision_types import BEVTrack
 
 
 class VisionMerger(ABC):

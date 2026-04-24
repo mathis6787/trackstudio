@@ -1,7 +1,7 @@
- /**
- * Vision WebSocket Service
- * Handles WebSocket connection for receiving vision metadata
- */
+/**
+* Vision WebSocket Service
+* Handles WebSocket connection for receiving vision metadata
+*/
 
 export interface StreamData {
   detections: Array<{
@@ -26,6 +26,8 @@ export interface VisionMetadata {
   timestamp: number
   frame_id: number
   processing_time_ms: number
+  detector_type?: string
+  tracker_type?: string
   num_streams: number
   active_stream_ids: number[]
   // Multi-stream data

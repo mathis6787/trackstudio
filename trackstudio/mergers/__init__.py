@@ -1,54 +1,56 @@
-"""
-TrackStudio Merger Registry
+"""Cross-camera merger interfaces and registry."""
 
-Dynamic registration system for cross-camera track mergers.
-"""
+from __future__ import annotations
 
 import logging
 
 from .base import VisionMerger
-from .bev_cluster import BEVClusterMerger
 
 logger = logging.getLogger(__name__)
 
 
 class MergerRegistry:
-    """Registry for vision mergers"""
+    """Lazy registry for vision mergers."""
 
-    def __init__(self):
-        self._mergers: dict[str, type[VisionMerger]] = {}
-        self._register_defaults()
+    def __init__(self) -> None:
+        self._mergers: dict[str, type[VisionMerger] | None] = {"bev_cluster": None}
 
-    def _register_defaults(self):
-        """Register default mergers"""
-        self.register("bev_cluster", BEVClusterMerger)
-
-    def register(self, name: str, merger_class: type[VisionMerger]):
-        """Register a new merger"""
+    def register(self, name: str, merger_class: type[VisionMerger]) -> None:
         if not issubclass(merger_class, VisionMerger):
             raise ValueError(f"{merger_class} must inherit from VisionMerger")
-
         self._mergers[name] = merger_class
         logger.info(f"Registered merger: {name}")
 
     def get(self, name: str) -> type[VisionMerger]:
-        """Get a merger class by name"""
         if name not in self._mergers:
             raise ValueError(f"Unknown merger: {name}. Available: {list(self._mergers.keys())}")
-        return self._mergers[name]
+
+        merger_class = self._mergers[name]
+        if merger_class is None and name == "bev_cluster":
+            from .bev_cluster import BEVClusterMerger  # noqa: PLC0415
+
+            merger_class = BEVClusterMerger
+            self._mergers[name] = merger_class
+
+        if merger_class is None:
+            raise ValueError(f"Unknown merger: {name}")
+        return merger_class
 
     def create(self, name: str, **kwargs) -> VisionMerger:
-        """Create a merger instance"""
-        merger_class = self.get(name)
-        return merger_class(**kwargs)
+        return self.get(name)(**kwargs)
 
     def list_available(self) -> list[str]:
-        """List available merger names"""
         return list(self._mergers.keys())
 
 
-# Global registry instance
 merger_registry = MergerRegistry()
 
-# Export commonly used items
 __all__ = ["VisionMerger", "BEVClusterMerger", "merger_registry"]
+
+
+def __getattr__(name: str):
+    if name == "BEVClusterMerger":
+        from .bev_cluster import BEVClusterMerger  # noqa: PLC0415
+
+        return BEVClusterMerger
+    raise AttributeError(name)

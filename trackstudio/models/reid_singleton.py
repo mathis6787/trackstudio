@@ -5,11 +5,17 @@ This module provides a singleton pattern for ReID extractors to prevent
 loading multiple instances and reduce GPU memory usage.
 """
 
+from __future__ import annotations
+
 import logging
 
-import torch
+from trackstudio.torch_runtime import configure_torch_runtime
 
-from .reid_extractor import TorchReIDExtractor
+configure_torch_runtime()
+
+import torch  # noqa: E402
+
+from .reid_extractor import TorchReIDExtractor  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

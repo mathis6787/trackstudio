@@ -3,6 +3,8 @@ Camera Calibration Module
 Handles all camera calibration functionality for the vision system
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import time

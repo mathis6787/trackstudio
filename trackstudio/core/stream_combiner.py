@@ -773,7 +773,10 @@ class StreamCombinerManager:
         """Set the VisionAPI instance to use"""
         global vision_api  # noqa: PLW0603
         vision_api = api
-        logger.info(f"🔗 StreamCombinerManager received VisionAPI with {api.tracker.__class__.__name__}")
+        logger.info(
+            f"🔗 StreamCombinerManager received VisionAPI with "
+            f"{api.detector.__class__.__name__} and {api.tracker.__class__.__name__}"
+        )
 
     def enable_vision_tracking(self):
         """Enable vision processing"""

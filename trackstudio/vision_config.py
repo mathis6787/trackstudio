@@ -1,33 +1,17 @@
-"""
-Vision System Configuration
+"""Vision system configuration models."""
 
-This module defines configuration classes for the vision tracking system,
-including tracker and merger configurations with proper type annotations.
-"""
+from __future__ import annotations
 
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, validator
 
-from trackstudio.config_registry import register_merger_config, register_tracker_config
+from trackstudio.config_registry import register_detector_config, register_merger_config, register_tracker_config
+from trackstudio.detectors.base import BaseDetectorConfig
 from trackstudio.trackers.base import BaseTrackerConfig
 
 
 def slider_field(default: float, min_val: float, max_val: float, step: float, title: str, description: str) -> float:
-    """
-    Factory for creating a float slider field for the UI.
-
-    Args:
-        default: Default value for the field
-        min_val: Minimum allowed value
-        max_val: Maximum allowed value
-        step: Step size for the slider
-        title: Display title for the UI
-        description: Description text for the UI
-
-    Returns:
-        Field configuration for a float slider
-    """
     return Field(
         default=default,
         title=title,
@@ -37,20 +21,6 @@ def slider_field(default: float, min_val: float, max_val: float, step: float, ti
 
 
 def int_slider_field(default: int, min_val: int, max_val: int, step: int, title: str, description: str) -> int:
-    """
-    Factory for creating an integer slider field for the UI.
-
-    Args:
-        default: Default value for the field
-        min_val: Minimum allowed value
-        max_val: Maximum allowed value
-        step: Step size for the slider
-        title: Display title for the UI
-        description: Description text for the UI
-
-    Returns:
-        Field configuration for an integer slider
-    """
     return Field(
         default=default,
         title=title,
@@ -60,16 +30,7 @@ def int_slider_field(default: int, min_val: int, max_val: int, step: int, title:
 
 
 class DetectionConfig(BaseModel):
-    """
-    Configuration for object detection parameters.
-
-    Attributes:
-        confidence_threshold: Minimum confidence score for accepting detections
-        nms_iou_threshold: IoU threshold for Non-Maximum Suppression
-        min_box_width: Minimum width of valid bounding boxes
-        min_box_height: Minimum height of valid bounding boxes
-        max_aspect_ratio: Maximum aspect ratio (width/height) for valid boxes
-    """
+    """Configuration for object detection filtering."""
 
     confidence_threshold: float = slider_field(
         0.25, 0.1, 0.95, 0.05, "Confidence Threshold", "Minimum confidence for a detection."
@@ -82,17 +43,22 @@ class DetectionConfig(BaseModel):
     max_aspect_ratio: float = slider_field(4.0, 1.0, 10.0, 0.1, "Max Aspect Ratio", "Maximum aspect ratio (w/h).")
 
 
-class SingleCameraTrackerConfig(BaseModel):
-    """
-    Configuration for single-camera tracking parameters.
+@register_detector_config("rfdetr")
+class RFDETRDetectorConfig(BaseDetectorConfig):
+    """Configuration for RF-DETR object detection."""
 
-    Attributes:
-        tracker_max_age: Number of frames to keep a track without detection
-        tracker_min_hits: Consecutive hits required to start a track
-        tracker_max_iou_distance: Maximum IoU distance for track association
-        tracker_max_cosine_distance: Maximum cosine distance for appearance
-        tracker_matching_threshold: ReID feature matching threshold
-    """
+    detection: DetectionConfig = Field(default_factory=DetectionConfig, title="Detection Parameters")
+
+
+@register_detector_config("dummy")
+class DummyDetectorConfig(BaseDetectorConfig):
+    """Configuration for dummy detection."""
+
+    pass
+
+
+class DeepSORTConfig(BaseModel):
+    """Configuration for DeepSORT single-camera tracking."""
 
     tracker_max_age: int = int_slider_field(30, 5, 200, 1, "Max Track Age", "Frames to keep a track without detection.")
     tracker_min_hits: int = int_slider_field(1, 1, 10, 1, "Min Hits to Start", "Consecutive hits to start a track.")
@@ -107,49 +73,75 @@ class SingleCameraTrackerConfig(BaseModel):
     )
 
 
-@register_tracker_config("rfdetr")
-class RFDETRTrackerConfig(BaseTrackerConfig):
-    """
-    Configuration for RF-DETR tracker with DeepSORT and ReID.
+@register_tracker_config("deepsort")
+class DeepSORTTrackerConfig(BaseTrackerConfig):
+    """Configuration for DeepSORT tracking."""
 
-    Combines object detection using RF-DETR with DeepSORT tracking
-    and ReID-based appearance features.
-    """
+    tracking: DeepSORTConfig = Field(default_factory=DeepSORTConfig, title="DeepSORT Parameters")
 
-    detection: DetectionConfig = Field(default_factory=DetectionConfig, title="Detection Parameters")
-    tracking: SingleCameraTrackerConfig = Field(
-        default_factory=SingleCameraTrackerConfig, title="Single-Camera Tracking"
+
+class ByteTrackConfig(BaseModel):
+    """Configuration for ByteTrack single-camera tracking."""
+
+    track_activation_threshold: float = slider_field(
+        0.25,
+        0.05,
+        0.95,
+        0.05,
+        "Activation Threshold",
+        "Min confidence to START a new track. Re-association ignores this threshold.",
     )
+    lost_track_buffer: int = int_slider_field(
+        50,
+        5,
+        300,
+        5,
+        "Lost Track Buffer (frames)",
+        "Frames to keep a track alive without a matching detection.",
+    )
+    minimum_matching_threshold: float = slider_field(
+        0.8,
+        0.1,
+        1.0,
+        0.05,
+        "IoU Matching Threshold",
+        "IoU threshold for the primary matching stage. Lower = more lenient.",
+    )
+    frame_rate: int = int_slider_field(
+        10,
+        1,
+        60,
+        1,
+        "Frame Rate",
+        "FPS used by ByteTrack's Kalman predictor. Match your vision_fps.",
+    )
+    minimum_consecutive_frames: int = int_slider_field(
+        1,
+        1,
+        10,
+        1,
+        "Min Consecutive Frames",
+        "Frames a track must appear before being reported.",
+    )
+
+
+@register_tracker_config("bytetrack")
+class ByteTrackTrackerConfig(BaseTrackerConfig):
+    """Configuration for ByteTrack tracking."""
+
+    tracking: ByteTrackConfig = Field(default_factory=ByteTrackConfig, title="ByteTrack Parameters")
 
 
 @register_tracker_config("dummy")
 class DummyTrackerConfig(BaseTrackerConfig):
-    """
-    Configuration for the dummy tracker.
-
-    This is a simple tracker used for testing and development
-    that doesn't require any configurable parameters.
-    """
+    """Configuration for dummy tracking."""
 
     pass
 
 
 @register_merger_config("bev_cluster")
 class CrossCameraConfig(BaseModel):
-    """
-    Configuration for BEV cluster merger.
-
-    This merger combines tracks from multiple cameras using
-    bird's eye view clustering and appearance matching.
-
-    Attributes:
-        spatial_threshold: Maximum distance in BEV pixels for track merging
-        appearance_threshold: Maximum feature distance for appearance matching
-        max_track_age_s: Maximum time to keep a global track without updates
-        appearance_weight: Weight of appearance vs spatial distance in matching
-        smoothing_alpha: Alpha for exponential smoothing of position
-        velocity_alpha: Alpha for smoothing velocity estimation
-    """
+    """Configuration for BEV cluster cross-camera merging."""
 
     spatial_threshold: float = slider_field(
         50.0,
@@ -176,163 +168,123 @@ class CrossCameraConfig(BaseModel):
     )
 
 
-# Create the dynamic configuration system
-def _create_config_system() -> tuple[type[BaseModel], str, str]:
-    """
-    Create the dynamic config system with auto-registration.
-
-    This function creates a dynamic VisionSystemConfig class that includes
-    all registered tracker and merger types in its schema.
-
-    Returns:
-        Tuple of (VisionSystemConfig class, TrackerType, MergerType)
-    """
+def _create_config_system() -> tuple[type[BaseModel], str, str, str]:
     from trackstudio.config_registry import get_config_classes  # noqa: PLC0415
 
     try:
-        VisionSystemConfig, TrackerType, MergerType = get_config_classes()  # noqa: N806
-        return VisionSystemConfig, TrackerType, MergerType
+        VisionSystemConfig, DetectorType, TrackerType, MergerType = get_config_classes()  # noqa: N806
+        return VisionSystemConfig, DetectorType, TrackerType, MergerType
     except Exception as e:
-        # If dynamic config creation fails, fall back to basic config
         import logging  # noqa: PLC0415
 
         logger = logging.getLogger(__name__)
         logger.warning(f"⚠️ Failed to get dynamic config classes, using fallback: {e}")
 
-        # Use simplified fallback config - create a basic class
-        from pydantic import BaseModel  # noqa: PLC0415
-
         class BasicVisionSystemConfig(BaseModel):
-            """Fallback config when dynamic system is not available"""
+            detector_type: str = "rfdetr"
+            tracker_type: str = "deepsort"
+            merger_type: str = "bev_cluster"
 
-            tracker_type: str = "dummy"  # Safe default tracker
-            merger_type: str = "bev_cluster"  # Safe default merger
+            def get_detector_config(self) -> BaseDetectorConfig:
+                from trackstudio.config_registry import get_registered_detector_configs  # noqa: PLC0415
+
+                configs = get_registered_detector_configs()
+                if self.detector_type in configs:
+                    return configs[self.detector_type]()
+                return BaseDetectorConfig()
 
             def get_tracker_config(self) -> BaseTrackerConfig:
-                # Try to get from registry first
                 from trackstudio.config_registry import get_registered_tracker_configs  # noqa: PLC0415
 
                 configs = get_registered_tracker_configs()
                 if self.tracker_type in configs:
                     return configs[self.tracker_type]()
-
-                # Fall back to base config if not found
-                logger.warning(f"⚠️ Tracker config not found for {self.tracker_type}, using base config")
                 return BaseTrackerConfig()
 
             def get_merger_config(self) -> BaseModel:
-                # Try to get from registry first
                 from trackstudio.config_registry import get_registered_merger_configs  # noqa: PLC0415
 
                 configs = get_registered_merger_configs()
                 if self.merger_type in configs:
                     return configs[self.merger_type]()
+                return CrossCameraConfig()
 
-                # Fall back to empty config
-                logger.warning(f"⚠️ Merger config not found for {self.merger_type}, using empty config")
-                return BaseModel()
+            def get_available_detectors(self) -> list[str]:
+                return ["rfdetr", "dummy"]
 
             def get_available_trackers(self) -> list[str]:
-                from trackstudio.config_registry import get_tracker_names  # noqa: PLC0415
-
-                registered = get_tracker_names()
-                return registered if registered else ["dummy"]
+                return ["deepsort", "bytetrack", "dummy"]
 
             def get_available_mergers(self) -> list[str]:
-                from trackstudio.config_registry import get_merger_names  # noqa: PLC0415
+                return ["bev_cluster"]
 
-                registered = get_merger_names()
-                return registered if registered else ["bev_cluster"]
-
-        return BasicVisionSystemConfig, str, str
+        return BasicVisionSystemConfig, str, str, str
 
 
-# Dynamic configuration system - will be created when needed
 _VisionSystemConfig: type[BaseModel] | None = None
+_DetectorType: str | None = None
 _TrackerType: str | None = None
 _MergerType: str | None = None
 
 
 def get_vision_system_config(force_refresh: bool = False) -> type[BaseModel]:
-    """
-    Get or create the dynamic VisionSystemConfig class.
-
-    Args:
-        force_refresh: Whether to force recreation of the config class
-
-    Returns:
-        The dynamic VisionSystemConfig class
-    """
-    global _VisionSystemConfig, _TrackerType, _MergerType  # noqa: PLW0603
+    global _VisionSystemConfig, _DetectorType, _TrackerType, _MergerType  # noqa: PLW0603
 
     if _VisionSystemConfig is None or force_refresh:
         try:
-            _VisionSystemConfig, _TrackerType, _MergerType = _create_config_system()
+            _VisionSystemConfig, _DetectorType, _TrackerType, _MergerType = _create_config_system()
         except Exception as e:
-            # Fallback to basic types if dynamic creation fails
             import logging  # noqa: PLC0415
 
             logger = logging.getLogger(__name__)
             logger.warning(f"⚠️ Could not create dynamic config system: {e}, using fallback")
 
-            # Fallback static config that accepts any tracker type
             class _VisionSystemConfigFallback(BaseModel):
-                """Fallback static configuration for the vision system"""
-
-                tracker_type: str = Field(default="rfdetr", title="Tracker Type")
+                detector_type: str = Field(default="rfdetr", title="Detector Type")
+                tracker_type: str = Field(default="deepsort", title="Tracker Type")
                 merger_type: str = Field(default="bev_cluster", title="Merger Type")
+
+                @validator("detector_type")
+                def validate_detector_type(self, v: str) -> str:
+                    return v
 
                 @validator("tracker_type")
                 def validate_tracker_type(self, v: str) -> str:
-                    # Accept any tracker type - validation will happen in the factory
                     return v
 
                 @validator("merger_type")
                 def validate_merger_type(self, v: str) -> str:
-                    # Accept any merger type - validation will happen in the factory
                     return v
 
+                def get_detector_config(self) -> BaseDetectorConfig:
+                    if self.detector_type == "rfdetr":
+                        return RFDETRDetectorConfig()
+                    if self.detector_type == "dummy":
+                        return DummyDetectorConfig()
+                    raise ValueError(f"Unknown detector type: {self.detector_type}")
+
                 def get_tracker_config(self) -> BaseTrackerConfig:
-                    # Try to get from registry first
-                    from trackstudio.config_registry import get_registered_tracker_configs  # noqa: PLC0415
-
-                    configs = get_registered_tracker_configs()
-                    if self.tracker_type in configs:
-                        return configs[self.tracker_type]()
-
-                    # Fallback to hardcoded configs
-                    if self.tracker_type == "rfdetr":
-                        return RFDETRTrackerConfig()
+                    if self.tracker_type == "deepsort":
+                        return DeepSORTTrackerConfig()
+                    if self.tracker_type == "bytetrack":
+                        return ByteTrackTrackerConfig()
                     if self.tracker_type == "dummy":
                         return DummyTrackerConfig()
                     raise ValueError(f"Unknown tracker type: {self.tracker_type}")
 
                 def get_merger_config(self) -> BaseModel:
-                    # Try to get from registry first
-                    from trackstudio.config_registry import get_registered_merger_configs  # noqa: PLC0415
-
-                    configs = get_registered_merger_configs()
-                    if self.merger_type in configs:
-                        return configs[self.merger_type]()
-
-                    # Fallback to hardcoded configs
                     if self.merger_type == "bev_cluster":
                         return CrossCameraConfig()
                     raise ValueError(f"Unknown merger type: {self.merger_type}")
 
-                def get_available_trackers(self) -> list[str]:
-                    from trackstudio.config_registry import get_tracker_names  # noqa: PLC0415
+                def get_available_detectors(self) -> list[str]:
+                    return ["rfdetr", "dummy"]
 
-                    registered = get_tracker_names()
-                    fallback = ["rfdetr", "dummy"]
-                    return list(set(registered + fallback))
+                def get_available_trackers(self) -> list[str]:
+                    return ["deepsort", "bytetrack", "dummy"]
 
                 def get_available_mergers(self) -> list[str]:
-                    from trackstudio.config_registry import get_merger_names  # noqa: PLC0415
-
-                    registered = get_merger_names()
-                    fallback = ["bev_cluster"]
-                    return list(set(registered + fallback))
+                    return ["bev_cluster"]
 
             _VisionSystemConfig = _VisionSystemConfigFallback
 
@@ -340,89 +292,42 @@ def get_vision_system_config(force_refresh: bool = False) -> type[BaseModel]:
 
 
 def refresh_config_system() -> None:
-    """Force refresh of the config system to pick up newly registered trackers"""
-    global _VisionSystemConfig, _TrackerType, _MergerType  # noqa: PLW0603
+    global _VisionSystemConfig, _DetectorType, _TrackerType, _MergerType  # noqa: PLW0603
     _VisionSystemConfig = None
+    _DetectorType = None
     _TrackerType = None
     _MergerType = None
 
 
-# Create a proxy that calls get_vision_system_config when needed
 class VisionSystemConfigMeta(type):
-    """
-    Metaclass for VisionSystemConfig that provides dynamic behavior.
-
-    This metaclass allows the VisionSystemConfig class to behave dynamically
-    based on registered tracker and merger types, which is essential for the UI.
-    """
-
     def __call__(cls, *args: Any, **kwargs: Any) -> Any:
-        """
-        Create an instance of the dynamic config class.
-
-        Args:
-            *args: Positional arguments for the config
-            **kwargs: Keyword arguments for the config
-
-        Returns:
-            Instance of the dynamic VisionSystemConfig
-        """
-        # Only refresh if needed, not on every call
-        config_class = get_vision_system_config(force_refresh=False)
-        return config_class(*args, **kwargs)
+        return get_vision_system_config(force_refresh=False)(*args, **kwargs)
 
     def model_json_schema(cls) -> dict[str, Any]:
-        """
-        Get the JSON schema for the dynamic config class.
-
-        Returns:
-            JSON schema dictionary for the UI
-        """
-        config_class = get_vision_system_config(force_refresh=False)
-        return config_class.model_json_schema()
+        return get_vision_system_config(force_refresh=False).model_json_schema()
 
     def model_dump_json(cls, *args: Any, **kwargs: Any) -> str:
-        """
-        Dump the model to JSON.
-
-        Args:
-            *args: Positional arguments
-            **kwargs: Keyword arguments
-
-        Returns:
-            JSON string representation
-        """
-        config_class = get_vision_system_config(force_refresh=False)
-        return config_class.model_dump_json(*args, **kwargs)
+        return get_vision_system_config(force_refresh=False).model_dump_json(*args, **kwargs)
 
 
 class VisionSystemConfig(metaclass=VisionSystemConfigMeta):
-    """
-    Dynamic Vision System Configuration - delegates to the actual implementation.
-
-    This class uses a metaclass to provide dynamic behavior based on registered
-    tracker and merger types. The UI depends on this dynamic behavior to show
-    the correct configuration options.
-    """
+    """Dynamic Vision System Configuration proxy."""
 
     pass
 
 
-# Convenience function to get tracker type for typing
-def get_tracker_type() -> str:
-    """
-    Get the current TrackerType for type hints.
+def get_detector_type() -> str:
+    if _DetectorType is None:
+        get_vision_system_config()
+    return _DetectorType or "str"
 
-    Returns:
-        The current tracker type string
-    """
+
+def get_tracker_type() -> str:
     if _TrackerType is None:
-        get_vision_system_config()  # This will initialize _TrackerType
+        get_vision_system_config()
     return _TrackerType or "str"
 
 
-# Unused functions - removed for optimization
-
-# Initial fallback types (will be updated when trackers are registered)
-TrackerType = Literal["rfdetr", "dummy"]
+DetectorType = Literal["rfdetr", "dummy"]
+TrackerType = Literal["deepsort", "bytetrack", "dummy"]
 MergerType = Literal["bev_cluster"]

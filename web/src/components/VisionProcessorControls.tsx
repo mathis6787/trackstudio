@@ -31,6 +31,17 @@ interface Schema {
 
 type Config = Record<string, any>;
 
+const DETECTOR_OPTIONS = [
+  { value: 'rfdetr', label: 'RF-DETR' },
+  { value: 'dummy', label: 'Dummy' },
+];
+
+const TRACKER_OPTIONS = [
+  { value: 'deepsort', label: 'DeepSORT' },
+  { value: 'bytetrack', label: 'ByteTrack' },
+  { value: 'dummy', label: 'Dummy' },
+];
+
 const VisionProcessorControls: React.FC = () => {
   const [schema, setSchema] = useState<Schema | null>(null);
   const [config, setConfig] = useState<Config | null>(null);
@@ -39,6 +50,27 @@ const VisionProcessorControls: React.FC = () => {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [restarting, setRestarting] = useState<boolean>(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState<boolean>(false);
+
+  const initializeOpenSections = useCallback((schemaData: Schema) => {
+    const initialSections: Record<string, boolean> = {};
+    if (schemaData && schemaData.properties) {
+      Object.keys(schemaData.properties).forEach(key => {
+        initialSections[key] = true; // Open top-level sections by default
+        if (schemaData.properties[key].properties) {
+          Object.keys(schemaData.properties[key].properties!).forEach(subKey => {
+            initialSections[`${key}.${subKey}`] = true; // Open sub-sections by default
+          });
+        }
+      });
+    }
+    setOpenSections(initialSections);
+  }, []);
+
+  const refreshSchema = useCallback(async () => {
+    const schemaData = await getVisionProcessorSchema();
+    setSchema(schemaData);
+    initializeOpenSections(schemaData);
+  }, [initializeOpenSections]);
 
   const debouncedUpdateConfig = useCallback(
     debounce((updatePayload: object) => {
@@ -57,18 +89,7 @@ const VisionProcessorControls: React.FC = () => {
         console.log('Fetched config:', configData);
         setSchema(schemaData);
         setConfig(configData);
-        const initialSections: Record<string, boolean> = {};
-        if (schemaData && schemaData.properties) {
-          Object.keys(schemaData.properties).forEach(key => {
-            initialSections[key] = true; // Open top-level sections by default
-            if(schemaData.properties[key].properties) {
-              Object.keys(schemaData.properties[key].properties!).forEach(subKey => {
-                 initialSections[`${key}.${subKey}`] = true; // Open sub-sections by default
-              });
-            }
-          });
-        }
-        setOpenSections(initialSections);
+        initializeOpenSections(schemaData);
         setError(null);
       } catch (err) {
         setError('Failed to load vision processor configuration.');
@@ -78,28 +99,28 @@ const VisionProcessorControls: React.FC = () => {
       }
     };
     fetchData();
-  }, []);
+  }, [initializeOpenSections]);
 
   const handleParamChange = (path: string[], value: any) => {
     setConfig(currentConfig => {
-        const newConfig = JSON.parse(JSON.stringify(currentConfig));
-        let config_level = newConfig;
-        for(let i=0; i < path.length - 1; i++) {
-            config_level = config_level[path[i]];
-        }
-        config_level[path[path.length-1]] = value;
+      const newConfig = JSON.parse(JSON.stringify(currentConfig));
+      let config_level = newConfig;
+      for (let i = 0; i < path.length - 1; i++) {
+        config_level = config_level[path[i]];
+      }
+      config_level[path[path.length - 1]] = value;
 
-        // Construct payload for backend
-        const updatePayload = {};
-        let payload_level: any = updatePayload;
-        for(let i=0; i < path.length - 1; i++) {
-            payload_level[path[i]] = {};
-            payload_level = payload_level[path[i]];
-        }
-        payload_level[path[path.length-1]] = value;
+      // Construct payload for backend
+      const updatePayload = {};
+      let payload_level: any = updatePayload;
+      for (let i = 0; i < path.length - 1; i++) {
+        payload_level[path[i]] = {};
+        payload_level = payload_level[path[i]];
+      }
+      payload_level[path[path.length - 1]] = value;
 
-        debouncedUpdateConfig(updatePayload);
-        return newConfig;
+      debouncedUpdateConfig(updatePayload);
+      return newConfig;
     });
   };
 
@@ -115,6 +136,7 @@ const VisionProcessorControls: React.FC = () => {
 
       const result = await restartVisionSystem(preserveCalibration);
       console.log('✅ Vision system restarted:', result);
+      await refreshSchema();
 
       // Optionally show success message or toast
       setShowRestartConfirm(false);
@@ -127,6 +149,30 @@ const VisionProcessorControls: React.FC = () => {
     }
   };
 
+  const handleDetectorTypeChange = async (detectorType: string) => {
+    try {
+      setError(null);
+      await updateVisionProcessorConfig({ detector_type: detectorType });
+      setConfig(currentConfig => currentConfig ? { ...currentConfig, detector_type: detectorType } : currentConfig);
+      await refreshSchema();
+    } catch (err) {
+      console.error('❌ Detector switch failed:', err);
+      setError('Failed to update detector selection. Check logs for details.');
+    }
+  };
+
+  const handleTrackerTypeChange = async (trackerType: string) => {
+    try {
+      setError(null);
+      await updateVisionProcessorConfig({ tracker_type: trackerType });
+      setConfig(currentConfig => currentConfig ? { ...currentConfig, tracker_type: trackerType } : currentConfig);
+      await refreshSchema();
+    } catch (err) {
+      console.error('❌ Tracker switch failed:', err);
+      setError('Failed to update tracker selection. Check logs for details.');
+    }
+  };
+
   const renderControls = (schemaProps: Record<string, ParamSchema>, path: string[]) => {
     return Object.entries(schemaProps).map(([key, paramSchema]) => {
       const currentPath = [...path, key];
@@ -134,7 +180,7 @@ const VisionProcessorControls: React.FC = () => {
 
       if (paramSchema.ui_control === 'slider') {
         let value: any = config;
-        for(const p of currentPath) {
+        for (const p of currentPath) {
           value = value?.[p];
         }
         value = value ?? paramSchema.default;
@@ -181,7 +227,7 @@ const VisionProcessorControls: React.FC = () => {
           className="w-full bg-[#1a1a1a] p-3 text-left font-bold flex justify-between items-center rounded-t-lg hover:bg-[#2a2a2a]"
         >
           <span>{sectionSchema.title || sectionKey}</span>
-          {isTopLevelSectionOpen ? <ChevronUpIcon className="w-5 h-5"/> : <ChevronDownIcon className="w-5 h-5"/>}
+          {isTopLevelSectionOpen ? <ChevronUpIcon className="w-5 h-5" /> : <ChevronDownIcon className="w-5 h-5" />}
         </button>
         {isTopLevelSectionOpen && (
           <div className="p-4">
@@ -189,12 +235,12 @@ const VisionProcessorControls: React.FC = () => {
               // Render subsections
               sectionSchema.properties ? Object.entries(sectionSchema.properties).map(([subKey, subSchema]) => (
                 subSchema ? (
-                                  <div key={subKey} className="mb-4">
-                  <h4 className="text-md font-semibold mb-2 text-white border-b border-[#8e8e8e]/30 pb-1">{subSchema.title || subKey}</h4>
-                  <div className="pt-2">
-                    {subSchema.properties ? renderControls(subSchema.properties, [sectionKey, subKey]) : null}
+                  <div key={subKey} className="mb-4">
+                    <h4 className="text-md font-semibold mb-2 text-white border-b border-[#8e8e8e]/30 pb-1">{subSchema.title || subKey}</h4>
+                    <div className="pt-2">
+                      {subSchema.properties ? renderControls(subSchema.properties, [sectionKey, subKey]) : null}
+                    </div>
                   </div>
-                </div>
                 ) : null
               )) : null
             ) : (
@@ -213,21 +259,55 @@ const VisionProcessorControls: React.FC = () => {
 
   return (
     <div className="bg-[#212121] border border-[#8e8e8e]/30 rounded-lg p-4 text-white">
+      <div className="mb-4 p-3 bg-[#1a1a1a] border border-[#8e8e8e]/20 rounded-lg">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-white">Detector</h3>
+            <p className="text-xs text-[#8e8e8e]">Change the detector, then restart the vision system to apply it.</p>
+            <select
+              value={config.detector_type || 'rfdetr'}
+              onChange={(e) => handleDetectorTypeChange(e.target.value)}
+              className="mt-2 w-full rounded-md border border-[#8e8e8e]/30 bg-[#212121] px-3 py-2 text-sm text-white outline-none focus:border-[#38bd85]"
+            >
+              {DETECTOR_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-white">Tracker</h3>
+            <p className="text-xs text-[#8e8e8e]">Change the tracker, then restart the vision system to apply it.</p>
+            <select
+              value={config.tracker_type || 'deepsort'}
+              onChange={(e) => handleTrackerTypeChange(e.target.value)}
+              className="mt-2 w-full rounded-md border border-[#8e8e8e]/30 bg-[#212121] px-3 py-2 text-sm text-white outline-none focus:border-[#38bd85]"
+            >
+              {TRACKER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
       {/* Restart System Section */}
       <div className="mb-4 p-3 bg-[#1a1a1a] border border-[#8e8e8e]/20 rounded-lg">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-white">System Control</h3>
-            <p className="text-xs text-[#8e8e8e]">Restart tracker and merger with current config</p>
+            <p className="text-xs text-[#8e8e8e]">Restart detector, tracker and merger with current config</p>
           </div>
           <button
             onClick={() => setShowRestartConfirm(true)}
             disabled={restarting}
-            className={`flex items-center gap-2 px-3 py-2 rounded-md transition-all ${
-              restarting
+            className={`flex items-center gap-2 px-3 py-2 rounded-md transition-all ${restarting
                 ? 'bg-[#8e8e8e]/20 text-[#8e8e8e] cursor-not-allowed'
                 : 'bg-gradient-to-r from-[#38bd85] to-[#2da89b] hover:from-[#2da89b] hover:to-[#38bd85] text-white hover:shadow-lg'
-            }`}
+              }`}
           >
             <ArrowPathIcon className={`w-4 h-4 ${restarting ? 'animate-spin' : ''}`} />
             <span className="text-sm font-medium">

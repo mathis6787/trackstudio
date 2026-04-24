@@ -4,6 +4,8 @@ TrackStudio Application
 Main application class that coordinates all TrackStudio components.
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import threading
@@ -24,7 +26,7 @@ logger = logging.getLogger(__name__)
 class TrackStudioApp:
     """Main TrackStudio application class"""
 
-    def __init__(self, config: "TrackStudioConfig"):
+    def __init__(self, config: TrackStudioConfig):
         self.config = config
         self.server = None
         self.server_thread = None
@@ -54,14 +56,21 @@ class TrackStudioApp:
             print(f"📡 Configured {len(streams)} streams for TrackStudio")
 
         # Configure vision - create the VisionAPI instance
-        logger.info(f"🔧 Creating VisionAPI with tracker_type='{self.config.tracker_type}'")
+        logger.info(
+            f"🔧 Creating VisionAPI with detector_type='{self.config.detector_type}', "
+            f"tracker_type='{self.config.tracker_type}'"
+        )
         self.vision_api = create_vision_api(
+            detector_type=self.config.detector_type,
             tracker_type=self.config.tracker_type,
             merger_type=self.config.merger_type,
             calibration_file=self.config.calibration_file,
         )
         self.vision_api.set_vision_fps(self.config.vision_fps)
-        logger.info(f"🧠 VisionAPI created with {self.vision_api.tracker.__class__.__name__}")
+        logger.info(
+            f"🧠 VisionAPI created with {self.vision_api.detector.__class__.__name__} "
+            f"and {self.vision_api.tracker.__class__.__name__}"
+        )
 
         # Pass the VisionAPI instance to all components that need it
         logger.info("🔗 Setting VisionAPI for stream combiner...")
@@ -75,7 +84,10 @@ class TrackStudioApp:
         vision_control.set_vision_api(self.vision_api)
         cameras.set_vision_api(self.vision_api)
 
-        logger.info(f"✅ Configured VisionAPI with {self.vision_api.tracker.__class__.__name__}")
+        logger.info(
+            f"✅ Configured VisionAPI with {self.vision_api.detector.__class__.__name__} "
+            f"and {self.vision_api.tracker.__class__.__name__}"
+        )
 
         # Load calibration data if available
         if self.config.calibration_file and Path(self.config.calibration_file).exists():
@@ -229,7 +241,8 @@ class TrackStudioConfig:
         self,
         rtsp_streams: list[str],
         camera_names: list[str] | None = None,
-        tracker_type: str = "rfdetr",
+        detector_type: str = "rfdetr",
+        tracker_type: str = "deepsort",
         merger_type: str = "bev_cluster",
         vision_fps: float = 10.0,
         server_name: str = "127.0.0.1",
@@ -242,6 +255,7 @@ class TrackStudioConfig:
     ):
         self.rtsp_streams = rtsp_streams
         self.camera_names = camera_names or []
+        self.detector_type = detector_type
         self.tracker_type = tracker_type
         self.merger_type = merger_type
         self.vision_fps = vision_fps

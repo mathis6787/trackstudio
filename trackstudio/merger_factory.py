@@ -5,6 +5,8 @@ This module provides factory functions for creating vision mergers
 based on configuration, enabling easy extensibility for new algorithms.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 
@@ -12,13 +14,12 @@ from trackstudio.config_registry import get_merger_names, get_registered_merger_
 from trackstudio.mergers.base import VisionMerger
 from trackstudio.mergers.bev_cluster import BEVClusterMerger
 from trackstudio.models.reid_extractor import TorchReIDExtractor
-from trackstudio.trackers.base import VisionTracker
 from trackstudio.vision_config import VisionSystemConfig
 
 logger = logging.getLogger(__name__)
 
 
-def create_merger(config: VisionSystemConfig, _tracker: VisionTracker | None = None) -> VisionMerger:
+def create_merger(config: VisionSystemConfig) -> VisionMerger:
     """
     Create a vision merger based on configuration.
 

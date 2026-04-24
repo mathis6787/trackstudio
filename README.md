@@ -142,12 +142,13 @@ app = ts.launch()
 
 # Custom configuration
 app = ts.launch(
-    rtmp_streams=[
+    rtsp_streams=[
         "rtsp://localhost:8554/camera0",
         "rtsp://localhost:8554/camera1"
     ],
     camera_names=["Camera 0", "Camera 1"],
-    tracker="rfdetr",
+    detector="rfdetr",
+    tracker="deepsort",
     server_port=8000,
 )
 ```
@@ -178,21 +179,16 @@ TrackStudio can be configured via:
 Example configuration file:
 ```json
 {
-  "cameras": {
-    "stream_urls": [
-      "rtsp://localhost:8554/camera0",
-      "rtsp://localhost:8554/camera1"
-    ]
-  },
-  "vision": {
-    "tracker_type": "rfdetr",
-    "merger_type": "bev_cluster",
-    "fps": 10.0
-  },
-  "server": {
-    "host": "0.0.0.0",
-    "port": 8000
-  }
+  "rtsp_streams": [
+    "rtsp://localhost:8554/camera0",
+    "rtsp://localhost:8554/camera1"
+  ],
+  "detector_type": "rfdetr",
+  "tracker_type": "deepsort",
+  "merger_type": "bev_cluster",
+  "vision_fps": 10.0,
+  "server_name": "0.0.0.0",
+  "server_port": 8000
 }
 ```
 

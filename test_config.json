@@ -7,8 +7,9 @@
         "Test Camera 0",
         "Test Camera 1"
     ],
-    "tracker": "rfdetr",
-    "merger": "bev_cluster",
+    "detector_type": "rfdetr",
+    "tracker_type": "deepsort",
+    "merger_type": "bev_cluster",
     "calibration_file": "calibration_data.json",
     "vision_fps": 10.0
 }

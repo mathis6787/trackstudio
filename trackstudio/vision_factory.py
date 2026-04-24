@@ -1,204 +1,119 @@
-"""
-Vision System Factory
+"""Factory for complete vision processing components."""
 
-This module provides factory functions for creating complete vision systems
-with tracker and merger components. It handles the initialization and configuration
-of the entire vision processing pipeline.
-"""
+from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
+from trackstudio.bev import BEVTransformer
+from trackstudio.detector_factory import create_detector, get_available_detectors, get_detector_type_from_env
+from trackstudio.detectors.base import VisionDetector
 from trackstudio.merger_factory import create_merger, get_available_mergers, get_merger_type_from_env
 from trackstudio.mergers.base import VisionMerger
 from trackstudio.tracker_factory import create_tracker, get_available_trackers, get_tracker_type_from_env
-from trackstudio.trackers.base import VisionTracker
+from trackstudio.trackers.base import SingleCameraTracker
 from trackstudio.vision_config import VisionSystemConfig
 
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class VisionComponents:
+    """Concrete components for the vision processing pipeline."""
+
+    detector: VisionDetector
+    tracker: SingleCameraTracker
+    bev_transformer: BEVTransformer
+    merger: VisionMerger
+    config: VisionSystemConfig
+
+
+def create_bev_transformer(calibration_file: str | None = None) -> BEVTransformer:
+    return BEVTransformer(calibration_file)
+
+
 def create_vision_system(
-    tracker_type: str | None = None, merger_type: str | None = None, calibration_file: str | None = None
-) -> tuple[VisionTracker, VisionMerger, VisionSystemConfig]:
-    """
-    Create a complete vision system with tracker and merger components.
+    detector_type: str | None = None,
+    tracker_type: str | None = None,
+    merger_type: str | None = None,
+    calibration_file: str | None = None,
+) -> VisionComponents:
+    """Create detector, tracker, BEV transformer, merger, and system config."""
+    detector_type = detector_type or get_detector_type_from_env()
+    tracker_type = tracker_type or get_tracker_type_from_env()
+    merger_type = merger_type or get_merger_type_from_env()
 
-    This function serves as the main entry point for creating a fully configured
-    vision processing system. It handles component selection, validation,
-    configuration creation, and optimization of shared resources.
-
-    Args:
-        tracker_type: Optional tracker type override (e.g., "rfdetr", "dummy").
-                     If None, will be determined from environment variables.
-        merger_type: Optional merger type override (e.g., "bev_cluster").
-                    If None, will be determined from environment variables.
-        calibration_file: Optional path to calibration data file.
-
-    Returns:
-        Tuple containing:
-        - VisionTracker: Initialized tracker instance
-        - VisionMerger: Initialized merger instance
-        - VisionSystemConfig: System configuration object
-
-    Raises:
-        RuntimeError: If system creation fails due to invalid configuration
-        ValueError: If specified tracker or merger types are not available
-
-    Example:
-        >>> tracker, merger, config = create_vision_system("rfdetr", "bev_cluster")
-        >>> # Use tracker and merger for vision processing
-    """
-    # Determine tracker type with fallback logic
-    if tracker_type is None:
-        tracker_type = get_tracker_type_from_env()
-
-    # Validate tracker type against available implementations
+    available_detectors = get_available_detectors()
     available_trackers = get_available_trackers()
-    if tracker_type not in available_trackers:
-        logger.warning(f"⚠️ Unknown tracker type: {tracker_type}, available: {available_trackers}")
-        if available_trackers:
-            tracker_type = available_trackers[0]
-            logger.info(f"🔄 Falling back to tracker: {tracker_type}")
-        else:
-            tracker_type = "dummy"
-            logger.warning("🔄 No trackers available, using dummy tracker")
-
-    # Determine merger type with fallback logic
-    if merger_type is None:
-        merger_type = get_merger_type_from_env()
-
-    # Validate merger type against available implementations
     available_mergers = get_available_mergers()
+
+    if detector_type not in available_detectors:
+        raise ValueError(f"Unsupported detector type: {detector_type}. Available detectors: {available_detectors}")
+    if tracker_type not in available_trackers:
+        raise ValueError(f"Unsupported tracker type: {tracker_type}. Available trackers: {available_trackers}")
     if merger_type not in available_mergers:
-        logger.warning(f"⚠️ Unknown merger type: {merger_type}, available: {available_mergers}")
-        if available_mergers:
-            merger_type = available_mergers[0]
-            logger.info(f"🔄 Falling back to merger: {merger_type}")
-        else:
-            merger_type = "bev_cluster"
-            logger.warning("🔄 No mergers available, using default bev_cluster")
+        raise ValueError(f"Unsupported merger type: {merger_type}. Available mergers: {available_mergers}")
 
-    # Create configuration with validated component types
     try:
-        config = VisionSystemConfig(tracker_type=tracker_type, merger_type=merger_type)  # type: ignore
-        logger.debug(f"✅ Created vision system config: {tracker_type} + {merger_type}")
+        config = VisionSystemConfig(
+            detector_type=detector_type,
+            tracker_type=tracker_type,
+            merger_type=merger_type,
+        )  # type: ignore[call-arg]
     except Exception as e:
-        logger.error(f"❌ Failed to create config with tracker_type={tracker_type}, merger_type={merger_type}: {e}")
-        # Fallback to default configuration
-        config = VisionSystemConfig()  # type: ignore
-        # Apply the selected types to the default config if possible
-        if hasattr(config, "tracker_type"):
-            config.tracker_type = tracker_type  # type: ignore
-        if hasattr(config, "merger_type"):
-            config.merger_type = merger_type  # type: ignore
-        logger.info("🔄 Using fallback configuration")
+        logger.error(
+            "❌ Failed to create config with detector_type=%s, tracker_type=%s, merger_type=%s: %s",
+            detector_type,
+            tracker_type,
+            merger_type,
+            e,
+        )
+        raise
 
-    # Create tracker and merger instances
-    try:
-        tracker = create_tracker(config, calibration_file)
-        merger = create_merger(config)
-        logger.debug(f"✅ Created tracker: {type(tracker).__name__}")
-        logger.debug(f"✅ Created merger: {type(merger).__name__}")
-    except Exception as e:
-        logger.error(f"❌ Failed to create vision components: {e}")
-        raise RuntimeError(f"Failed to initialize vision system: {e}") from e
-
-    # Optimization: Share ReID extractor between components to reduce memory usage
+    detector = create_detector(config)
+    tracker = create_tracker(config)
+    bev_transformer = create_bev_transformer(calibration_file)
+    merger = create_merger(config)
     _optimize_shared_resources(tracker, merger)
 
-    logger.info(f"🧠 Vision system created successfully with {tracker_type} tracker and {merger_type} merger")
+    logger.info(
+        f"🧠 Vision system created successfully with {detector_type} detector, "
+        f"{tracker_type} tracker and {merger_type} merger"
+    )
+    return VisionComponents(detector, tracker, bev_transformer, merger, config)
 
-    return tracker, merger, config
 
-
-def _optimize_shared_resources(tracker: VisionTracker, merger: VisionMerger) -> None:
-    """
-    Optimize shared resources between tracker and merger components.
-
-    This internal function identifies opportunities to share expensive resources
-    like ReID feature extractors between the tracker and merger to reduce
-    memory usage and improve performance.
-
-    Args:
-        tracker: The initialized tracker instance
-        merger: The initialized merger instance
-
-    Note:
-        This function modifies the components in-place to share resources.
-    """
-    # Check if both components have ReID extractors that can be shared
+def _optimize_shared_resources(tracker: SingleCameraTracker, merger: VisionMerger) -> None:
+    """Share expensive resources such as ReID extractors when possible."""
     if hasattr(tracker, "reid_extractor") and hasattr(merger, "reid_extractor"):
         tracker_has_reid = getattr(tracker, "reid_extractor", None) is not None
         merger_has_reid = getattr(merger, "reid_extractor", None) is not None
 
         if tracker_has_reid and not merger_has_reid:
-            # Share tracker's ReID extractor with merger
             merger.reid_extractor = tracker.reid_extractor
             logger.info("♻️ Shared ReID extractor from tracker to merger")
         elif merger_has_reid and not tracker_has_reid:
-            # Share merger's ReID extractor with tracker
             tracker.reid_extractor = merger.reid_extractor
             logger.info("♻️ Shared ReID extractor from merger to tracker")
-        elif tracker_has_reid and merger_has_reid:
-            logger.debug("ℹ️ Both components have ReID extractors - no sharing needed")
 
 
-def get_available_vision_systems() -> list[tuple[str, str]]:
-    """
-    Get all available combinations of tracker and merger types.
-
-    Returns a list of all valid (tracker_type, merger_type) combinations
-    that can be used to create vision systems.
-
-    Returns:
-        List of tuples where each tuple contains (tracker_type, merger_type)
-
-    Example:
-        >>> combinations = get_available_vision_systems()
-        >>> print(combinations)
-        [('rfdetr', 'bev_cluster'), ('dummy', 'bev_cluster'), ...]
-    """
+def get_available_vision_systems() -> list[tuple[str, str, str]]:
+    detectors = get_available_detectors()
     trackers = get_available_trackers()
     mergers = get_available_mergers()
-
-    combinations = []
-    combinations.extend((tracker_type, merger_type) for tracker_type in trackers for merger_type in mergers)
-
-    logger.debug(f"📋 Available vision system combinations: {len(combinations)}")
-    return combinations
+    return [(detector, tracker, merger) for detector in detectors for tracker in trackers for merger in mergers]
 
 
-def validate_vision_system_config(tracker_type: str, merger_type: str) -> bool:
-    """
-    Validate that a specific tracker and merger combination is supported.
+def validate_vision_system_config(detector_type: str, tracker_type: str, merger_type: str) -> bool:
+    detector_valid = detector_type in get_available_detectors()
+    tracker_valid = tracker_type in get_available_trackers()
+    merger_valid = merger_type in get_available_mergers()
 
-    Checks if the specified tracker and merger types are available and
-    compatible with each other.
-
-    Args:
-        tracker_type: The tracker type to validate
-        merger_type: The merger type to validate
-
-    Returns:
-        True if the combination is valid and supported, False otherwise
-
-    Example:
-        >>> is_valid = validate_vision_system_config("rfdetr", "bev_cluster")
-        >>> if is_valid:
-        ...     tracker, merger, config = create_vision_system("rfdetr", "bev_cluster")
-    """
-    available_trackers = get_available_trackers()
-    available_mergers = get_available_mergers()
-
-    tracker_valid = tracker_type in available_trackers
-    merger_valid = merger_type in available_mergers
-
+    if not detector_valid:
+        logger.warning(f"❌ Invalid detector type: {detector_type}")
     if not tracker_valid:
         logger.warning(f"❌ Invalid tracker type: {tracker_type}")
     if not merger_valid:
         logger.warning(f"❌ Invalid merger type: {merger_type}")
 
-    is_valid = tracker_valid and merger_valid
-    logger.debug(f"✅ Vision system config validation: {is_valid}")
-
-    return is_valid
+    return detector_valid and tracker_valid and merger_valid

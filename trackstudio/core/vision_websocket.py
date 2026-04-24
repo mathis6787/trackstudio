@@ -138,6 +138,21 @@ class VisionWebSocketManager:
                             "correlation_timestamp": float(correlation_timestamp),  # For video sync
                             "frame_id": int(vision_result.frame_id),
                             "processing_time_ms": float(vision_result.processing_time_ms),
+                            "detector_type": (
+                                stream_combiner_manager.vision_api.detector.get_statistics().get(
+                                    "detector_type", "Unknown"
+                                )
+                                if stream_combiner_manager.vision_api
+                                and stream_combiner_manager.vision_api.detector
+                                else "Unknown"
+                            ),
+                            "tracker_type": (
+                                stream_combiner_manager.vision_api.tracker.get_statistics().get(
+                                    "tracker_type", "Unknown"
+                                )
+                                if stream_combiner_manager.vision_api and stream_combiner_manager.vision_api.tracker
+                                else "Unknown"
+                            ),
                             "num_streams": int(vision_result.num_streams),
                             "active_stream_ids": [int(sid) for sid in active_stream_ids],
                             # Multi-stream data

@@ -5,10 +5,17 @@ This module provides a wrapper for TorchReID's feature extraction functionality,
 enabling deep learning-based person re-identification features.
 """
 
+from __future__ import annotations
+
 import logging
 
 import numpy as np
-import torch
+
+from trackstudio.torch_runtime import configure_torch_runtime
+
+configure_torch_runtime()
+
+import torch  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

@@ -25,11 +25,18 @@ def cli():
 @click.option("--streams", "-s", multiple=True, help="RTSP stream URLs (can specify multiple times)")
 @click.option("--config", "-c", type=click.Path(exists=True), help="Configuration file path")
 @click.option(
+    "--detector",
+    "-d",
+    default="rfdetr",
+    type=str,
+    help="Object detector to use (rfdetr, dummy, or custom)",
+)
+@click.option(
     "--tracker",
     "-t",
-    default="rfdetr",
+    default="deepsort",
     type=str,  # Allow any string, validation happens later
-    help="Vision tracker to use (rfdetr, dummy, or custom)",
+    help="Single-camera tracker to use (deepsort, bytetrack, dummy, or custom)",
 )
 @click.option("--merger", "-m", default="bev_cluster", help="Cross-camera merger to use")
 @click.option("--port", "-p", default=8000, type=int, help="Server port")
@@ -39,7 +46,7 @@ def cli():
 @click.option("--vision-fps", default=10.0, type=float, help="Vision processing FPS")
 @click.option("--calibration-file", type=click.Path(exists=True), help="Calibration data file")
 @click.option("--debug", is_flag=True, help="Enable debug logging")
-def run(streams, config, tracker, merger, port, host, share, no_browser, vision_fps, calibration_file, debug):
+def run(streams, config, detector, tracker, merger, port, host, share, no_browser, vision_fps, calibration_file, debug):
     """Run TrackStudio server"""
 
     # Show banner
@@ -74,8 +81,9 @@ def run(streams, config, tracker, merger, port, host, share, no_browser, vision_
     table.add_column("Setting", style="cyan")
     table.add_column("Value", style="green")
 
-    table.add_row("Tracker", config_data.get("tracker", tracker))
-    table.add_row("Merger", config_data.get("merger", merger))
+    table.add_row("Detector", config_data.get("detector_type", detector))
+    table.add_row("Tracker", config_data.get("tracker_type", tracker))
+    table.add_row("Merger", config_data.get("merger_type", merger))
     table.add_row("Vision FPS", str(config_data.get("vision_fps", vision_fps)))
     table.add_row("Server", f"{config_data.get('server_name', host)}:{config_data.get('server_port', port)}")
     table.add_row("Share", "Yes" if config_data.get("share", share) else "No")
@@ -93,8 +101,9 @@ def run(streams, config, tracker, merger, port, host, share, no_browser, vision_
     try:
         # Launch TrackStudio
         app = launch(
-            tracker=config_data.get("tracker", tracker),
-            merger=config_data.get("merger", merger),
+            detector=config_data.get("detector_type", detector),
+            tracker=config_data.get("tracker_type", tracker),
+            merger=config_data.get("merger_type", merger),
             vision_fps=config_data.get("vision_fps", vision_fps),
             server_name=config_data.get("server_name", host),
             server_port=config_data.get("server_port", port),
@@ -137,7 +146,21 @@ def demo():
 @cli.command()
 def list():
     """List available trackers and mergers"""
-    from . import list_mergers, list_trackers  # noqa: PLC0415
+    from . import list_detectors, list_mergers, list_trackers  # noqa: PLC0415
+
+    detectors_table = Table(title="Available Detectors")
+    detectors_table.add_column("Name", style="cyan")
+    detectors_table.add_column("Description", style="white")
+
+    for detector in list_detectors():
+        desc = {
+            "rfdetr": "RF-DETR person detector",
+            "dummy": "Test detector that generates random detections",
+        }.get(detector, "Custom detector")
+        detectors_table.add_row(detector, desc)
+
+    console.print(detectors_table)
+    console.print()
 
     # Create trackers table
     trackers_table = Table(title="Available Trackers")
@@ -146,7 +169,8 @@ def list():
 
     for tracker in list_trackers():
         desc = {
-            "rfdetr": "Real-time object detection and tracking with RT-DETR",
+            "deepsort": "DeepSORT tracking with ReID features",
+            "bytetrack": "ByteTrack tracking with IoU association",
             "dummy": "Test tracker that generates random tracks",
         }.get(tracker, "Custom tracker")
         trackers_table.add_row(tracker, desc)
@@ -177,7 +201,8 @@ def config(stream_urls, output, names):
     config_data = {
         "rtsp_streams": list(stream_urls),
         "camera_names": list(names) if names else [f"Camera {i}" for i in range(len(stream_urls))],
-        "tracker_type": "rfdetr",
+        "detector_type": "rfdetr",
+        "tracker_type": "deepsort",
         "merger_type": "bev_cluster",
         "vision_fps": 10.0,
         "server_port": 8000,

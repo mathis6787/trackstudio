@@ -12,10 +12,13 @@ Example:
             "rtsp://localhost:8554/camera0",
             "rtsp://localhost:8554/camera1"
         ],
-        tracker="rfdetr",  # or "dummy" for testing
+        detector="rfdetr",
+        tracker="deepsort",
         share=True  # Create public URL
     )
 """
+
+from __future__ import annotations
 
 __version__ = "0.1.0"
 
@@ -23,13 +26,11 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-# Core imports
-from .core.trackstudio_app import TrackStudioApp, TrackStudioConfig
-from .mergers import merger_registry
+from .detector_factory import get_available_detectors
+from .detectors.base import VisionDetector
 from .mergers.base import VisionMerger
 
 # Registry imports
-from .trackers import tracker_registry
 from .trackers.base import VisionTracker
 
 # Export main classes and functions
@@ -37,10 +38,12 @@ __all__ = [
     "launch",
     "TrackStudioApp",
     "TrackStudioConfig",
+    "VisionDetector",
     "VisionTracker",
     "VisionMerger",
     "register_tracker",
     "register_merger",
+    "list_detectors",
     "list_trackers",
     "list_mergers",
 ]
@@ -48,10 +51,19 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
+def __getattr__(name: str):
+    if name in {"TrackStudioApp", "TrackStudioConfig"}:
+        from .core.trackstudio_app import TrackStudioApp, TrackStudioConfig  # noqa: PLC0415
+
+        return {"TrackStudioApp": TrackStudioApp, "TrackStudioConfig": TrackStudioConfig}[name]
+    raise AttributeError(name)
+
+
 def launch(
     rtsp_streams: list[str] | None = None,
     camera_names: list[str] | None = None,
-    tracker: str = "rfdetr",
+    detector: str = "rfdetr",
+    tracker: str = "deepsort",
     merger: str = "bev_cluster",
     vision_fps: float = 10.0,
     server_name: str = "127.0.0.1",
@@ -63,14 +75,15 @@ def launch(
     config: dict[str, Any] | None = None,
     on_track: Callable | None = None,
     **_kwargs,
-) -> TrackStudioApp:
+) -> Any:
     """
     Launch TrackStudio multi-camera tracking interface.
 
     Args:
         rtsp_streams: List of RTSP stream URLs to process
         camera_names: Optional names for each camera
-        tracker: Vision tracker to use ("rfdetr", "dummy", or custom)
+        detector: Object detector to use ("rfdetr" or "dummy")
+        tracker: Single-camera tracker to use ("deepsort", "bytetrack", or "dummy")
         merger: Cross-camera merger to use ("bev_cluster" or custom)
         vision_fps: Vision processing FPS (default: 10.0)
         server_name: Server hostname (default: "127.0.0.1")
@@ -90,7 +103,8 @@ def launch(
         >>> import trackstudio as ts
         >>> app = ts.launch(
         ...     rtsp_streams=["rtsp://localhost:8554/cam0"],
-        ...     tracker="rfdetr",
+        ...     detector="rfdetr",
+        ...     tracker="deepsort",
         ...     share=True
         ... )
     """
@@ -102,10 +116,13 @@ def launch(
     if camera_names is None:
         camera_names = [f"Camera {i}" for i in range(len(rtsp_streams))]
 
+    from .core.trackstudio_app import TrackStudioApp, TrackStudioConfig  # noqa: PLC0415
+
     # Create configuration
     app_config = TrackStudioConfig(
         rtsp_streams=rtsp_streams,
         camera_names=camera_names,
+        detector_type=detector,
         tracker_type=tracker,
         merger_type=merger,
         vision_fps=vision_fps,
@@ -163,6 +180,8 @@ def register_tracker(name: str, tracker_class: type):
         >>>
         >>> register_tracker("mytracker", MyTracker)
     """
+    from .trackers import tracker_registry  # noqa: PLC0415
+
     tracker_registry.register(name, tracker_class)
     logger.info(f"✅ Registered tracker: {name}")
 
@@ -175,17 +194,28 @@ def register_merger(name: str, merger_class: type):
         name: Name for the merger
         merger_class: Merger class (must inherit from VisionMerger)
     """
+    from .mergers import merger_registry  # noqa: PLC0415
+
     merger_registry.register(name, merger_class)
     logger.info(f"✅ Registered merger: {name}")
 
 
 def list_trackers() -> list[str]:
     """Get list of available vision trackers."""
+    from .trackers import tracker_registry  # noqa: PLC0415
+
     return tracker_registry.list_available()
+
+
+def list_detectors() -> list[str]:
+    """Get list of available object detectors."""
+    return get_available_detectors()
 
 
 def list_mergers() -> list[str]:
     """Get list of available cross-camera mergers."""
+    from .mergers import merger_registry  # noqa: PLC0415
+
     return merger_registry.list_available()
 
 
@@ -201,6 +231,7 @@ def demo():
     return launch(
         rtsp_streams=["rtsp://localhost:8554/camera0", "rtsp://localhost:8554/camera1"],
         camera_names=["Front Camera", "Side Camera"],
+        detector="dummy",
         tracker="dummy",  # Use dummy tracker for demo
         open_browser=True,
     )

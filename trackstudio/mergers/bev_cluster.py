@@ -5,6 +5,8 @@ This module implements cross-camera tracking using bird's eye view clustering
 and appearance-based features for associating tracks across multiple cameras.
 """
 
+from __future__ import annotations
+
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -12,8 +14,8 @@ from typing import Any
 import numpy as np
 
 from ..models.reid_extractor import TorchReIDExtractor
-from ..trackers.base import BEVTrack
 from ..vision_config import CrossCameraConfig
+from ..vision_types import BEVTrack
 from .base import VisionMerger
 
 logger = logging.getLogger(__name__)

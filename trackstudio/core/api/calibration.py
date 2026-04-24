@@ -23,7 +23,10 @@ def set_vision_api(api):
     """Set the VisionAPI instance to use"""
     global vision_api  # noqa: PLW0603
     vision_api = api
-    logger.info(f"🔗 Calibration API received VisionAPI with {api.tracker.__class__.__name__}")
+    logger.info(
+        f"🔗 Calibration API received VisionAPI with "
+        f"{api.detector.__class__.__name__} and {api.tracker.__class__.__name__}"
+    )
 
 
 class PointPair(BaseModel):
@@ -248,7 +251,7 @@ async def debug_transform_calibration_points():
                 image_points = camera_data["image_points"]
 
                 # Transform the image points through the backend homography
-                calibration = getattr(vision_api.tracker, "calibration", None)
+                calibration = getattr(vision_api.bev_transformer, "calibration", None)
                 backend_bev_points = calibration.transform_points_to_bev(image_points, camera_id) if calibration else []
 
                 # Get the original BEV reference points for comparison

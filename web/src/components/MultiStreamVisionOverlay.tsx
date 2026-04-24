@@ -191,12 +191,12 @@ export const MultiStreamVisionOverlay: React.FC<MultiStreamVisionOverlayProps> =
       ctx.lineWidth = 1
       ctx.strokeRect(streamOffsetX, streamOffsetY, streamWidth, streamHeight)
 
-      // Draw detections (red bounding boxes) - these show RF-DETR is working
+      // Draw detections (red bounding boxes)
       ctx.strokeStyle = '#ff0000'
       ctx.lineWidth = 3
       ctx.font = '12px Arial'
 
-      streamData.detections.forEach((detection: any, detIndex: number) => {
+      streamData.detections.forEach((detection: any) => {
         const [x, y, w, h] = detection.bbox
 
         // Transform from detection space to display space
@@ -234,7 +234,7 @@ export const MultiStreamVisionOverlay: React.FC<MultiStreamVisionOverlayProps> =
         // Draw center point
         ctx.fillStyle = '#00ff00'
         ctx.beginPath()
-        ctx.arc(scaledX + scaledW/2, scaledY + scaledH/2, 3, 0, 2 * Math.PI)
+        ctx.arc(scaledX + scaledW / 2, scaledY + scaledH / 2, 3, 0, 2 * Math.PI)
         ctx.fill()
       })
 
@@ -318,7 +318,7 @@ export const MultiStreamVisionOverlay: React.FC<MultiStreamVisionOverlayProps> =
     ctx.fillStyle = '#ffffff'
     ctx.font = 'bold 12px Arial'
     ctx.fillText(
-      `🔴 ${totalDetections} RF-DETR Detections | 🌈 ${totalTracks} DeepSORT Tracks | 🗺️ ${dataToRender.bev_tracks.length} BEV | Frame ${dataToRender.frame_id}`,
+      `🔴 ${totalDetections} ${dataToRender.detector_type || 'Detector'} Detections | 🌈 ${totalTracks} ${dataToRender.tracker_type || 'Tracker'} Tracks | 🗺️ ${dataToRender.bev_tracks.length} BEV | Frame ${dataToRender.frame_id}`,
       10,
       canvas.height - 30
     )
@@ -341,7 +341,7 @@ export const MultiStreamVisionOverlay: React.FC<MultiStreamVisionOverlayProps> =
 
     // Draw legend in top-right corner
     const legendWidth = 200
-    const legendHeight = 80  // Increased height for sync status
+    const legendHeight = 80
     const legendX = canvas.width - legendWidth - 10
     const legendY = 10
 
@@ -354,10 +354,11 @@ export const MultiStreamVisionOverlay: React.FC<MultiStreamVisionOverlayProps> =
 
     ctx.font = '10px Arial'
     ctx.fillStyle = '#ff0000'
-    ctx.fillText('🔴 D = RF-DETR Detection', legendX + 5, legendY + 30)
+    ctx.fillText(`🔴 D = ${dataToRender.detector_type || 'Detector'} Detection`, legendX + 5, legendY + 30)
 
+    const trackerName = dataToRender.tracker_type?.includes('ByteTrack') ? 'ByteTrack' : dataToRender.tracker_type?.includes('DeepSORT') ? 'DeepSORT' : (dataToRender.tracker_type || 'Track')
     ctx.fillStyle = '#00ff00'
-    ctx.fillText('🌈 T = DeepSORT Track', legendX + 5, legendY + 45)
+    ctx.fillText(`🌈 T = ${trackerName} Track`, legendX + 5, legendY + 45)
 
     // Health indicator
     const healthText = totalDetections > 0 ?

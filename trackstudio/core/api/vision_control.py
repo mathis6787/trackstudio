@@ -18,7 +18,10 @@ def set_vision_api(api):
     """Set the VisionAPI instance to use"""
     global vision_api  # noqa: PLW0603
     vision_api = api
-    logger.info(f"🔗 Vision Control API received VisionAPI with {api.tracker.__class__.__name__}")
+    logger.info(
+        f"🔗 Vision Control API received VisionAPI with "
+        f"{api.detector.__class__.__name__} and {api.tracker.__class__.__name__}"
+    )
 
 
 router = APIRouter()
@@ -87,6 +90,7 @@ async def restart_vision_system(request: RestartRequest):
             return {
                 "success": True,
                 "message": "Vision system restarted successfully. All tracking states have been reset.",
+                "detector": vision_api.detector.__class__.__name__,
                 "tracker": vision_api.tracker.__class__.__name__,
                 "merger": vision_api.merger.__class__.__name__,
                 "calibration_preserved": request.preserve_calibration,
