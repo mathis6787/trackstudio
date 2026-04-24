@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, validator
 
 from trackstudio.config_registry import register_detector_config, register_merger_config, register_tracker_config
 from trackstudio.detectors.base import BaseDetectorConfig
@@ -26,6 +26,24 @@ def int_slider_field(default: int, min_val: int, max_val: int, step: int, title:
         title=title,
         description=description,
         json_schema_extra={"ui_control": "slider", "min": min_val, "max": max_val, "step": step, "type": "integer"},
+    )
+
+
+def bool_field(default: bool, title: str, description: str) -> bool:
+    return Field(
+        default=default,
+        title=title,
+        description=description,
+        json_schema_extra={"ui_control": "toggle", "type": "boolean"},
+    )
+
+
+def select_field(default: str, options: list[str], title: str, description: str) -> str:
+    return Field(
+        default=default,
+        title=title,
+        description=description,
+        json_schema_extra={"ui_control": "select", "options": options, "type": "string"},
     )
 
 
@@ -132,6 +150,64 @@ class ByteTrackTrackerConfig(BaseTrackerConfig):
     tracking: ByteTrackConfig = Field(default_factory=ByteTrackConfig, title="ByteTrack Parameters")
 
 
+class BoTSORTConfig(BaseModel):
+    """Configuration for BoT-SORT single-camera tracking."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    track_high_thresh: float = slider_field(
+        0.5, 0.05, 0.95, 0.05, "High Confidence Threshold", "Detection confidence threshold for first association."
+    )
+    track_low_thresh: float = slider_field(
+        0.1, 0.01, 0.5, 0.01, "Low Confidence Threshold", "Lower confidence bound for second-stage candidate detections."
+    )
+    new_track_thresh: float = slider_field(
+        0.6, 0.05, 0.95, 0.05, "New Track Threshold", "Confidence required to initialize a new track."
+    )
+    track_buffer: int = int_slider_field(
+        50, 5, 300, 5, "Lost Track Buffer (frames)", "Frames to keep an unmatched track alive."
+    )
+    match_thresh: float = slider_field(
+        0.8, 0.1, 1.0, 0.05, "Matching Threshold", "Association threshold for matching tracks to detections."
+    )
+    proximity_thresh: float = slider_field(
+        0.5, 0.1, 1.0, 0.05, "Proximity Threshold", "IoU gate used before appearance matching."
+    )
+    appearance_thresh: float = slider_field(
+        0.25, 0.05, 1.0, 0.05, "Appearance Threshold", "Maximum embedding distance accepted for ReID matching."
+    )
+    use_reid_matching: bool = bool_field(
+        True,
+        "Use ReID Matching",
+        "Use TrackStudio ReID embeddings for BoT-SORT appearance association.",
+    )
+    reid_backend: str = select_field(
+        "trackstudio",
+        ["trackstudio"],
+        "ReID Backend",
+        "Source of ReID embeddings. TrackStudio uses its shared TorchReID/OSNet extractor.",
+    )
+    cmc_method: str = select_field(
+        "none",
+        ["none", "ecc", "orb", "sof", "sift", "sparseOptFlow"],
+        "Camera Motion Compensation",
+        "Camera motion compensation method. Use none for fixed cameras.",
+    )
+    frame_rate: int = int_slider_field(
+        10, 1, 60, 1, "Frame Rate", "FPS used by BoT-SORT's track buffer scaling. Match your vision_fps."
+    )
+    fuse_first_associate: bool = bool_field(
+        False, "Fuse First Association", "Fuse motion and appearance in the first association step."
+    )
+
+
+@register_tracker_config("botsort")
+class BoTSORTTrackerConfig(BaseTrackerConfig):
+    """Configuration for BoT-SORT tracking."""
+
+    tracking: BoTSORTConfig = Field(default_factory=BoTSORTConfig, title="BoT-SORT Parameters")
+
+
 @register_tracker_config("dummy")
 class DummyTrackerConfig(BaseTrackerConfig):
     """Configuration for dummy tracking."""
@@ -213,7 +289,7 @@ def _create_config_system() -> tuple[type[BaseModel], str, str, str]:
                 return ["rfdetr", "dummy"]
 
             def get_available_trackers(self) -> list[str]:
-                return ["deepsort", "bytetrack", "dummy"]
+                return ["deepsort", "bytetrack", "botsort", "dummy"]
 
             def get_available_mergers(self) -> list[str]:
                 return ["bev_cluster"]
@@ -268,6 +344,8 @@ def get_vision_system_config(force_refresh: bool = False) -> type[BaseModel]:
                         return DeepSORTTrackerConfig()
                     if self.tracker_type == "bytetrack":
                         return ByteTrackTrackerConfig()
+                    if self.tracker_type == "botsort":
+                        return BoTSORTTrackerConfig()
                     if self.tracker_type == "dummy":
                         return DummyTrackerConfig()
                     raise ValueError(f"Unknown tracker type: {self.tracker_type}")
@@ -281,7 +359,7 @@ def get_vision_system_config(force_refresh: bool = False) -> type[BaseModel]:
                     return ["rfdetr", "dummy"]
 
                 def get_available_trackers(self) -> list[str]:
-                    return ["deepsort", "bytetrack", "dummy"]
+                    return ["deepsort", "bytetrack", "botsort", "dummy"]
 
                 def get_available_mergers(self) -> list[str]:
                     return ["bev_cluster"]

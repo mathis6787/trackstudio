@@ -46,8 +46,9 @@ dependencies = [
     "click>=8.1.0",
     "rich>=13.0.0",
     "python-dotenv>=1.0.0",
-    "rfdetr @ git+https://github.com/roboflow/rf-detr.git",
-    "trackers",
+    "rfdetr>=1.6,<2",
+    "boxmot>=18,<19",
+    "trackers[deepsort]",
     "torchreid",
     "gdown>=5.2.0",
 ]

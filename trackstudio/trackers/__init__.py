@@ -18,6 +18,7 @@ class TrackerRegistry:
         self._trackers: dict[str, type[SingleCameraTracker] | None] = {
             "deepsort": None,
             "bytetrack": None,
+            "botsort": None,
             "dummy": None,
         }
 
@@ -41,6 +42,10 @@ class TrackerRegistry:
                 from .bytetrack import ByteTrackSingleCameraTracker  # noqa: PLC0415
 
                 tracker_class = ByteTrackSingleCameraTracker
+            elif name == "botsort":
+                from .botsort import BoTSORTSingleCameraTracker  # noqa: PLC0415
+
+                tracker_class = BoTSORTSingleCameraTracker
             elif name == "dummy":
                 from .dummy import DummySingleCameraTracker  # noqa: PLC0415
 
@@ -69,6 +74,7 @@ __all__ = [
     "tracker_registry",
     "DeepSORTSingleCameraTracker",
     "ByteTrackSingleCameraTracker",
+    "BoTSORTSingleCameraTracker",
     "DummySingleCameraTracker",
 ]
 
@@ -82,6 +88,10 @@ def __getattr__(name: str):
         from .bytetrack import ByteTrackSingleCameraTracker  # noqa: PLC0415
 
         return ByteTrackSingleCameraTracker
+    if name == "BoTSORTSingleCameraTracker":
+        from .botsort import BoTSORTSingleCameraTracker  # noqa: PLC0415
+
+        return BoTSORTSingleCameraTracker
     if name == "DummySingleCameraTracker":
         from .dummy import DummySingleCameraTracker  # noqa: PLC0415
 

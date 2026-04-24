@@ -17,10 +17,11 @@ interface ParamSchema {
   description: string;
   type: string;
   default?: any;
-  ui_control?: 'slider';
+  ui_control?: 'slider' | 'toggle' | 'select';
   min?: number;
   max?: number;
   step?: number;
+  options?: string[];
   properties?: Record<string, ParamSchema>;
 }
 
@@ -39,6 +40,7 @@ const DETECTOR_OPTIONS = [
 const TRACKER_OPTIONS = [
   { value: 'deepsort', label: 'DeepSORT' },
   { value: 'bytetrack', label: 'ByteTrack' },
+  { value: 'botsort', label: 'BoT-SORT' },
   { value: 'dummy', label: 'Dummy' },
 ];
 
@@ -205,6 +207,62 @@ const VisionProcessorControls: React.FC = () => {
             />
             <span className="text-sm font-mono text-transparent bg-gradient-to-r from-[#38bd85] to-[#2da89b] bg-clip-text col-span-1 text-right">
               {fixedValue.toFixed(step < 1 ? 2 : 0)}
+            </span>
+          </div>
+        );
+      }
+      if (paramSchema.ui_control === 'toggle') {
+        let value: any = config;
+        for (const p of currentPath) {
+          value = value?.[p];
+        }
+        const checked = typeof value === 'boolean' ? value : Boolean(paramSchema.default);
+
+        return (
+          <div key={currentPathStr} className="grid grid-cols-3 gap-4 items-center mb-2">
+            <label className="text-sm text-[#8e8e8e] col-span-1" title={paramSchema.description}>
+              {paramSchema.title || key}
+            </label>
+            <div className="col-span-1">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(e) => handleParamChange(currentPath, e.target.checked)}
+                className="h-4 w-4 accent-[#38bd85]"
+              />
+            </div>
+            <span className="text-sm font-mono text-transparent bg-gradient-to-r from-[#38bd85] to-[#2da89b] bg-clip-text col-span-1 text-right">
+              {checked ? 'On' : 'Off'}
+            </span>
+          </div>
+        );
+      }
+      if (paramSchema.ui_control === 'select') {
+        let value: any = config;
+        for (const p of currentPath) {
+          value = value?.[p];
+        }
+        const selectedValue = typeof value === 'string' ? value : String(paramSchema.default ?? '');
+        const options = paramSchema.options || [];
+
+        return (
+          <div key={currentPathStr} className="grid grid-cols-3 gap-4 items-center mb-2">
+            <label className="text-sm text-[#8e8e8e] col-span-1" title={paramSchema.description}>
+              {paramSchema.title || key}
+            </label>
+            <select
+              value={selectedValue}
+              onChange={(e) => handleParamChange(currentPath, e.target.value)}
+              className="col-span-1 rounded-md border border-[#8e8e8e]/30 bg-[#212121] px-2 py-1 text-sm text-white outline-none focus:border-[#38bd85]"
+            >
+              {options.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            <span className="text-sm font-mono text-transparent bg-gradient-to-r from-[#38bd85] to-[#2da89b] bg-clip-text col-span-1 text-right">
+              {selectedValue}
             </span>
           </div>
         );

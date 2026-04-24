@@ -25,12 +25,14 @@ def test_torch_runtime_enables_mps_fallback(monkeypatch):
 
 def test_vision_system_config_exposes_split_component_configs():
     config = VisionSystemConfig(detector_type="rfdetr", tracker_type="bytetrack", merger_type="bev_cluster")
+    botsort_config = VisionSystemConfig(detector_type="rfdetr", tracker_type="botsort", merger_type="bev_cluster")
 
     assert config.detector_type == "rfdetr"
     assert config.tracker_type == "bytetrack"
     assert config.merger_type == "bev_cluster"
     assert type(config.get_detector_config()).__name__ == "RFDETRDetectorConfig"
     assert type(config.get_tracker_config()).__name__ == "ByteTrackTrackerConfig"
+    assert type(botsort_config.get_tracker_config()).__name__ == "BoTSORTTrackerConfig"
 
 
 def test_create_vision_system_wires_dummy_components():
@@ -60,7 +62,7 @@ def test_create_vision_system_rejects_unknown_components():
         raise AssertionError("Expected unknown tracker to fail")
 
 
-def test_factories_create_rfdetr_deepsort_and_bytetrack_with_stubbed_dependencies(monkeypatch):
+def test_factories_create_rfdetr_trackers_with_stubbed_dependencies(monkeypatch):
     rfdetr_module = types.ModuleType("rfdetr")
     detr_module = types.ModuleType("rfdetr.detr")
 
@@ -119,9 +121,27 @@ def test_factories_create_rfdetr_deepsort_and_bytetrack_with_stubbed_dependencie
 
     byte_core_module.ByteTrack = FakeByteTrack
 
+    boxmot_module = types.ModuleType("boxmot")
+    boxmot_module.__path__ = []
+    boxmot_trackers_module = types.ModuleType("boxmot.trackers")
+    boxmot_trackers_module.__path__ = []
+    boxmot_botsort_package = types.ModuleType("boxmot.trackers.botsort")
+    boxmot_botsort_package.__path__ = []
+    boxmot_botsort_module = types.ModuleType("boxmot.trackers.botsort.botsort")
+
+    class FakeBoTSORT:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    boxmot_botsort_module.BotSort = FakeBoTSORT
+
     monkeypatch.setitem(sys.modules, "rfdetr", rfdetr_module)
     monkeypatch.setitem(sys.modules, "rfdetr.detr", detr_module)
     monkeypatch.setitem(sys.modules, "trackers", trackers_module)
+    monkeypatch.setitem(sys.modules, "boxmot", boxmot_module)
+    monkeypatch.setitem(sys.modules, "boxmot.trackers", boxmot_trackers_module)
+    monkeypatch.setitem(sys.modules, "boxmot.trackers.botsort", boxmot_botsort_package)
+    monkeypatch.setitem(sys.modules, "boxmot.trackers.botsort.botsort", boxmot_botsort_module)
     monkeypatch.setitem(sys.modules, "supervision", supervision_module)
     monkeypatch.setitem(sys.modules, "supervision.tracker", supervision_tracker_module)
     monkeypatch.setitem(sys.modules, "supervision.tracker.byte_tracker", supervision_byte_tracker_module)
@@ -130,14 +150,21 @@ def test_factories_create_rfdetr_deepsort_and_bytetrack_with_stubbed_dependencie
         "trackstudio.trackers.deepsort.DeepSORTSingleCameraTracker._initialize_reid",
         lambda self: setattr(self, "reid_extractor", object()),
     )
+    monkeypatch.setattr(
+        "trackstudio.trackers.botsort.BoTSORTSingleCameraTracker._initialize_reid_model",
+        lambda self: setattr(self, "reid_adapter", object()),
+    )
 
     rfdetr_deepsort = create_vision_system("rfdetr", "deepsort", "bev_cluster")
     rfdetr_bytetrack = create_vision_system("rfdetr", "bytetrack", "bev_cluster")
+    rfdetr_botsort = create_vision_system("rfdetr", "botsort", "bev_cluster")
 
     assert type(rfdetr_deepsort.detector).__name__ == "RFDETRDetector"
     assert type(rfdetr_deepsort.tracker).__name__ == "DeepSORTSingleCameraTracker"
     assert type(rfdetr_bytetrack.detector).__name__ == "RFDETRDetector"
     assert type(rfdetr_bytetrack.tracker).__name__ == "ByteTrackSingleCameraTracker"
+    assert type(rfdetr_botsort.detector).__name__ == "RFDETRDetector"
+    assert type(rfdetr_botsort.tracker).__name__ == "BoTSORTSingleCameraTracker"
 
 
 def test_vision_api_orchestrates_split_components():

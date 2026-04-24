@@ -36,7 +36,7 @@ def cli():
     "-t",
     default="deepsort",
     type=str,  # Allow any string, validation happens later
-    help="Single-camera tracker to use (deepsort, bytetrack, dummy, or custom)",
+    help="Single-camera tracker to use (deepsort, bytetrack, botsort, dummy, or custom)",
 )
 @click.option("--merger", "-m", default="bev_cluster", help="Cross-camera merger to use")
 @click.option("--port", "-p", default=8000, type=int, help="Server port")
@@ -171,6 +171,7 @@ def list():
         desc = {
             "deepsort": "DeepSORT tracking with ReID features",
             "bytetrack": "ByteTrack tracking with IoU association",
+            "botsort": "BoT-SORT tracking with optional ReID features",
             "dummy": "Test tracker that generates random tracks",
         }.get(tracker, "Custom tracker")
         trackers_table.add_row(tracker, desc)

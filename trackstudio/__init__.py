@@ -83,7 +83,7 @@ def launch(
         rtsp_streams: List of RTSP stream URLs to process
         camera_names: Optional names for each camera
         detector: Object detector to use ("rfdetr" or "dummy")
-        tracker: Single-camera tracker to use ("deepsort", "bytetrack", or "dummy")
+        tracker: Single-camera tracker to use ("deepsort", "bytetrack", "botsort", or "dummy")
         merger: Cross-camera merger to use ("bev_cluster" or custom)
         vision_fps: Vision processing FPS (default: 10.0)
         server_name: Server hostname (default: "127.0.0.1")

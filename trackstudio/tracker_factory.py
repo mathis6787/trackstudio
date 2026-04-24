@@ -46,6 +46,18 @@ def create_tracker(config: VisionSystemConfig) -> SingleCameraTracker:
             logger.error(f"❌ Failed to import ByteTrackSingleCameraTracker: {e}")
             raise ImportError(f"ByteTrack dependencies not available: {e}") from e
 
+    if tracker_type == "botsort":
+        try:
+            from trackstudio.trackers.botsort import BoTSORTSingleCameraTracker  # noqa: PLC0415
+
+            return BoTSORTSingleCameraTracker(config=tracker_config)
+        except ImportError as e:
+            logger.error(f"❌ Failed to import BoTSORTSingleCameraTracker: {e}")
+            raise ImportError(
+                "BoT-SORT dependencies not available. Run `uv sync` to install project dependencies: "
+                f"{e}"
+            ) from e
+
     if tracker_type in TRACKER_REGISTRY:
         tracker_class = TRACKER_REGISTRY[tracker_type]
         return tracker_class(config=tracker_config)

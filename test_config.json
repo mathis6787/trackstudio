@@ -1,15 +1,66 @@
 {
-    "rtsp_streams": [
-        "rtsp://localhost:8554/camera0",
-        "rtsp://localhost:8554/camera1"
-    ],
-    "camera_names": [
-        "Test Camera 0",
-        "Test Camera 1"
-    ],
-    "detector_type": "rfdetr",
-    "tracker_type": "deepsort",
-    "merger_type": "bev_cluster",
-    "calibration_file": "calibration_data.json",
-    "vision_fps": 10.0
+  "rtsp_streams": [
+    "rtsp://localhost:8554/camera0",
+    "rtsp://localhost:8554/camera1"
+  ],
+  "camera_names": [
+    "Test Camera 0",
+    "Test Camera 1"
+  ],
+  "detector_type": "rfdetr",
+  "tracker_type": "botsort",
+  "merger_type": "bev_cluster",
+  "calibration_file": "calibration_data.json",
+  "vision_fps": 10.0,
+  "rfdetr_detector": {
+    "detection": {
+      "confidence_threshold": 0.25,
+      "nms_iou_threshold": 0.5,
+      "min_box_width": 15,
+      "min_box_height": 30,
+      "max_aspect_ratio": 4.0
+    }
+  },
+  "deepsort_tracker": {
+    "tracking": {
+      "tracker_max_age": 30,
+      "tracker_min_hits": 1,
+      "tracker_max_iou_distance": 0.7,
+      "tracker_max_cosine_distance": 0.3,
+      "tracker_matching_threshold": 0.3
+    }
+  },
+  "bytetrack_tracker": {
+    "tracking": {
+      "track_activation_threshold": 0.25,
+      "lost_track_buffer": 50,
+      "minimum_matching_threshold": 0.8,
+      "frame_rate": 10,
+      "minimum_consecutive_frames": 1
+    }
+  },
+  "botsort_tracker": {
+    "tracking": {
+      "track_high_thresh": 0.5,
+      "track_low_thresh": 0.1,
+      "new_track_thresh": 0.6,
+      "track_buffer": 50,
+      "match_thresh": 0.8,
+      "proximity_thresh": 0.5,
+      "appearance_thresh": 0.25,
+      "use_reid_matching": true,
+      "reid_backend": "trackstudio",
+      "cmc_method": "none",
+      "frame_rate": 10,
+      "fuse_first_associate": false
+    }
+  },
+  "bev_cluster_merger": {
+    "spatial_threshold": 50.0,
+    "appearance_threshold": 0.4,
+    "max_track_age_s": 3.0,
+    "appearance_weight": 0.3,
+    "smoothing_alpha": 0.3,
+    "velocity_alpha": 0.5
+  }
 }

@@ -31,7 +31,7 @@ A real-time multi-camera object detection and tracking system with WebRTC stream
 ## Features
 
 - 🎥 **Multi-Camera Support** - Process multiple RTSP streams simultaneously
-- 🤖 **Detection and Tracking** - Defaults to RFDETR detection and DeepSORT tracking
+- 🤖 **Detection and Tracking** - Defaults to RF-DETR detection and DeepSORT tracking, with ByteTrack and optional BoT-SORT support
 - 🌐 **WebRTC Streaming** - Low-latency browser-based viewing
 - 🎯 **Cross-Camera Merging** - Track objects across multiple camera views
 - 🏗️ **Extensible** - Plugin system for custom trackers and mergers

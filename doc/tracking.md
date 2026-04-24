@@ -18,8 +18,9 @@ TrackStudio now separates detection from tracking:
 
 - `deepsort`
 - `bytetrack`
+- `botsort`
 
-Planned trackers may include `botsort`. BoT-SORT should be implemented as a separate tracker component so it can consume detections from any detector, for example:
+BoT-SORT is implemented as a separate tracker component so it can consume detections from any detector, for example:
 
 ```text
 rfdetr -> botsort
@@ -134,6 +135,41 @@ If `vision_fps` is `10`, keep ByteTrack `frame_rate` at `10`. If you increase `v
 
 ---
 
+## BoT-SORT Settings
+
+BoT-SORT uses BoxMOT, which is installed by the normal project sync:
+
+```bash
+uv sync
+```
+
+TrackStudio uses RF-DETR `1.6+`, which resolves with the newer Hugging Face stack required by BoxMOT 18. Avoid downgrading RF-DETR or pinning Transformers back to 4.x if you want BoT-SORT to keep working through `uv sync`.
+
+BoxMOT is AGPL-3.0 licensed. Revisit that license before selling or redistributing a product that includes BoT-SORT/BoxMOT.
+
+These are the BoT-SORT settings shown in the UI when `tracker_type` is `botsort`.
+
+| UI label | Config field | Default | Meaning |
+|---|---:|---:|---|
+| High Confidence Threshold | `track_high_thresh` | `0.5` | Detection confidence threshold for first association. |
+| Low Confidence Threshold | `track_low_thresh` | `0.1` | Lower confidence bound for second-stage candidate detections. |
+| New Track Threshold | `new_track_thresh` | `0.6` | Confidence required to initialize a new track. |
+| Lost Track Buffer (frames) | `track_buffer` | `50` | Frames to keep an unmatched track alive. |
+| Matching Threshold | `match_thresh` | `0.8` | Association threshold for matching tracks to detections. |
+| Proximity Threshold | `proximity_thresh` | `0.5` | IoU gate used before appearance matching. |
+| Appearance Threshold | `appearance_thresh` | `0.25` | Maximum embedding distance accepted for ReID matching. |
+| Use ReID Matching | `use_reid_matching` | `true` | Use TrackStudio ReID embeddings for BoT-SORT appearance association. |
+| ReID Backend | `reid_backend` | `trackstudio` | Source of ReID embeddings. Currently only TrackStudio's shared TorchReID/OSNet backend is implemented. |
+| Camera Motion Compensation | `cmc_method` | `none` | Use `none` for fixed cameras. Moving cameras can try methods supported by BoxMOT. |
+| Frame Rate | `frame_rate` | `10` | FPS used by BoT-SORT track buffer scaling. Match `vision_fps`. |
+| Fuse First Association | `fuse_first_associate` | `false` | Fuse motion and appearance in the first association step. |
+
+For fixed retail/security cameras, keep `cmc_method` set to `none`. Camera motion compensation is useful for moving cameras, but wastes compute and can add failure modes for static cameras.
+
+TrackStudio currently feeds BoT-SORT with the existing TorchReID/OSNet extractor so DeepSORT, BoT-SORT, and cross-camera merging share one appearance pipeline. In production, if BoT-SORT becomes the primary tracker, it may be better to use BoxMOT's native ReID backend/model loading instead. That choice should be benchmarked against the shared TrackStudio ReID path for accuracy, memory use, startup time, and deployment packaging.
+
+---
+
 ## DeepSORT Settings
 
 These settings are only relevant when `tracker_type` is `deepsort`.
@@ -188,7 +224,7 @@ Those are ReID/appearance settings, and ByteTrack does not use ReID in this impl
 
 Open the **Vision Processor Controls** panel.
 
-1. Select the tracker: `DeepSORT` or `ByteTrack`.
+1. Select the tracker: `DeepSORT`, `ByteTrack`, or `BoT-SORT`.
 2. Adjust the settings shown for that tracker.
 3. Click **Restart System** if you changed the tracker algorithm.
 
@@ -200,6 +236,7 @@ Defaults live in `trackstudio/vision_config.py`:
 
 - `DeepSORTConfig`
 - `ByteTrackConfig`
+- `BoTSORTConfig`
 
 Example ByteTrack default:
 
@@ -219,6 +256,8 @@ lost_track_buffer: int = int_slider_field(
 ## ReID and Re-identification
 
 DeepSORT uses an OSNet appearance model to help match a person based on visual appearance.
+
+BoT-SORT also supports ReID. In this project, BoT-SORT currently reuses the same TorchReID/OSNet extractor as DeepSORT instead of loading a second ReID model through BoxMOT. For a production BoT-SORT-first deployment, using BoxMOT's own ReID backend may be a reasonable alternative if it is faster or easier to package.
 
 ByteTrack does not use ReID in this project. It can maintain an ID through short occlusions using motion and low-confidence detections, but if a person disappears for longer than `lost_track_buffer`, they will normally receive a new ID when they reappear.
 
