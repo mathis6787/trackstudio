@@ -147,7 +147,7 @@ app = ts.launch(
         "rtsp://localhost:8554/camera1"
     ],
     camera_names=["Camera 0", "Camera 1"],
-    detector="rfdetr",
+    detector="yolo",
     tracker="deepsort",
     server_port=8000,
 )
@@ -183,9 +183,17 @@ Example configuration file:
     "rtsp://localhost:8554/camera0",
     "rtsp://localhost:8554/camera1"
   ],
-  "detector_type": "rfdetr",
+  "detector_type": "yolo",
   "tracker_type": "deepsort",
   "merger_type": "bev_cluster",
+  "yolo_detector": {
+    "model": {
+      "weights": "yolo26n.pt",
+      "image_size": 640,
+      "device": "auto",
+      "person_only": true
+    }
+  },
   "vision_fps": 10.0,
   "server_name": "0.0.0.0",
   "server_port": 8000

@@ -31,6 +31,15 @@ def create_detector(config: VisionSystemConfig) -> VisionDetector:
             logger.error(f"❌ Failed to import RFDETRDetector: {e}")
             raise ImportError(f"RFDETRDetector dependencies not available: {e}") from e
 
+    if detector_type == "yolo":
+        try:
+            from trackstudio.detectors.yolo import YOLODetector  # noqa: PLC0415
+
+            return YOLODetector(config=detector_config)
+        except ImportError as e:
+            logger.error(f"❌ Failed to import YOLODetector: {e}")
+            raise ImportError(f"YOLODetector dependencies not available: {e}") from e
+
     available_detectors = get_detector_names()
     raise ValueError(f"Unsupported detector type: {detector_type}. Available detectors: {available_detectors}")
 

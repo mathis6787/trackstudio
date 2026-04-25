@@ -61,10 +61,43 @@ class DetectionConfig(BaseModel):
     max_aspect_ratio: float = slider_field(4.0, 1.0, 10.0, 0.1, "Max Aspect Ratio", "Maximum aspect ratio (w/h).")
 
 
+class YOLOModelConfig(BaseModel):
+    """Configuration for Ultralytics YOLO detection models."""
+
+    weights: str = select_field(
+        "yolo26n.pt",
+        ["yolo26n.pt", "yolo26s.pt", "yolo26m.pt", "yolo26l.pt", "yolo26x.pt"],
+        "Weights",
+        "YOLO26 detection checkpoint. Larger models are usually more accurate and slower.",
+    )
+    image_size: int = int_slider_field(
+        640, 320, 1280, 32, "Image Size", "Inference image size passed to Ultralytics YOLO."
+    )
+    device: str = select_field(
+        "auto",
+        ["auto", "cpu", "mps", "cuda"],
+        "Device",
+        "Inference device. Auto prefers CUDA, then Apple MPS, then CPU.",
+    )
+    person_only: bool = bool_field(
+        True,
+        "Person Only",
+        "Only emit COCO person detections. Disable to emit all YOLO classes.",
+    )
+
+
 @register_detector_config("rfdetr")
 class RFDETRDetectorConfig(BaseDetectorConfig):
     """Configuration for RF-DETR object detection."""
 
+    detection: DetectionConfig = Field(default_factory=DetectionConfig, title="Detection Parameters")
+
+
+@register_detector_config("yolo")
+class YOLODetectorConfig(BaseDetectorConfig):
+    """Configuration for Ultralytics YOLO object detection."""
+
+    model: YOLOModelConfig = Field(default_factory=YOLOModelConfig, title="YOLO26 Model")
     detection: DetectionConfig = Field(default_factory=DetectionConfig, title="Detection Parameters")
 
 
@@ -286,7 +319,7 @@ def _create_config_system() -> tuple[type[BaseModel], str, str, str]:
                 return CrossCameraConfig()
 
             def get_available_detectors(self) -> list[str]:
-                return ["rfdetr", "dummy"]
+                return ["rfdetr", "yolo", "dummy"]
 
             def get_available_trackers(self) -> list[str]:
                 return ["deepsort", "bytetrack", "botsort", "dummy"]
@@ -335,6 +368,8 @@ def get_vision_system_config(force_refresh: bool = False) -> type[BaseModel]:
                 def get_detector_config(self) -> BaseDetectorConfig:
                     if self.detector_type == "rfdetr":
                         return RFDETRDetectorConfig()
+                    if self.detector_type == "yolo":
+                        return YOLODetectorConfig()
                     if self.detector_type == "dummy":
                         return DummyDetectorConfig()
                     raise ValueError(f"Unknown detector type: {self.detector_type}")
@@ -356,7 +391,7 @@ def get_vision_system_config(force_refresh: bool = False) -> type[BaseModel]:
                     raise ValueError(f"Unknown merger type: {self.merger_type}")
 
                 def get_available_detectors(self) -> list[str]:
-                    return ["rfdetr", "dummy"]
+                    return ["rfdetr", "yolo", "dummy"]
 
                 def get_available_trackers(self) -> list[str]:
                     return ["deepsort", "bytetrack", "botsort", "dummy"]
@@ -406,6 +441,6 @@ def get_tracker_type() -> str:
     return _TrackerType or "str"
 
 
-DetectorType = Literal["rfdetr", "dummy"]
+DetectorType = Literal["rfdetr", "yolo", "dummy"]
 TrackerType = Literal["deepsort", "bytetrack", "dummy"]
 MergerType = Literal["bev_cluster"]

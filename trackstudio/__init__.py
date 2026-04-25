@@ -12,7 +12,7 @@ Example:
             "rtsp://localhost:8554/camera0",
             "rtsp://localhost:8554/camera1"
         ],
-        detector="rfdetr",
+        detector="yolo",
         tracker="deepsort",
         share=True  # Create public URL
     )
@@ -82,7 +82,7 @@ def launch(
     Args:
         rtsp_streams: List of RTSP stream URLs to process
         camera_names: Optional names for each camera
-        detector: Object detector to use ("rfdetr" or "dummy")
+        detector: Object detector to use ("rfdetr", "yolo", or "dummy")
         tracker: Single-camera tracker to use ("deepsort", "bytetrack", "botsort", or "dummy")
         merger: Cross-camera merger to use ("bev_cluster" or custom)
         vision_fps: Vision processing FPS (default: 10.0)

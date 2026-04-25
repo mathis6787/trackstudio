@@ -34,6 +34,7 @@ type Config = Record<string, any>;
 
 const DETECTOR_OPTIONS = [
   { value: 'rfdetr', label: 'RF-DETR' },
+  { value: 'yolo', label: 'YOLO26' },
   { value: 'dummy', label: 'Dummy' },
 ];
 

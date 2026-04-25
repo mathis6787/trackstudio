@@ -60,6 +60,22 @@ export const MultiStreamVisionOverlay: React.FC<MultiStreamVisionOverlayProps> =
     return { col, row }
   }
 
+  const fitCanvasText = (
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number
+  ) => {
+    if (ctx.measureText(text).width <= maxWidth) {
+      return text
+    }
+
+    let clipped = text
+    while (clipped.length > 1 && ctx.measureText(`${clipped}…`).width > maxWidth) {
+      clipped = clipped.slice(0, -1)
+    }
+    return `${clipped}…`
+  }
+
   // Draw overlay function for all streams
   const drawOverlay = () => {
     const canvas = canvasRef.current
@@ -340,37 +356,52 @@ export const MultiStreamVisionOverlay: React.FC<MultiStreamVisionOverlayProps> =
     )
 
     // Draw legend in top-right corner
-    const legendWidth = 200
-    const legendHeight = 80
+    const legendWidth = Math.min(320, Math.max(220, canvas.width * 0.22))
+    const legendHeight = 96
     const legendX = canvas.width - legendWidth - 10
     const legendY = 10
+    const legendPadding = 8
+    const legendTextX = legendX + legendPadding
+    const legendMaxTextWidth = legendWidth - legendPadding * 2
 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'
     ctx.fillRect(legendX, legendY, legendWidth, legendHeight)
 
     ctx.font = 'bold 11px Arial'
     ctx.fillStyle = '#ffffff'
-    ctx.fillText('🔍 Debug Legend:', legendX + 5, legendY + 15)
+    ctx.fillText('🔍 Debug Legend:', legendTextX, legendY + 16)
 
     ctx.font = '10px Arial'
     ctx.fillStyle = '#ff0000'
-    ctx.fillText(`🔴 D = ${dataToRender.detector_type || 'Detector'} Detection`, legendX + 5, legendY + 30)
+    ctx.fillText(
+      fitCanvasText(ctx, `🔴 D = ${dataToRender.detector_type || 'Detector'}`, legendMaxTextWidth),
+      legendTextX,
+      legendY + 33
+    )
 
     const trackerName = dataToRender.tracker_type?.includes('ByteTrack') ? 'ByteTrack' : dataToRender.tracker_type?.includes('DeepSORT') ? 'DeepSORT' : (dataToRender.tracker_type || 'Track')
     ctx.fillStyle = '#00ff00'
-    ctx.fillText(`🌈 T = ${trackerName} Track`, legendX + 5, legendY + 45)
+    ctx.fillText(
+      fitCanvasText(ctx, `🌈 T = ${trackerName}`, legendMaxTextWidth),
+      legendTextX,
+      legendY + 49
+    )
 
     // Health indicator
     const healthText = totalDetections > 0 ?
       (totalTracks > 0 ? '✅ Both Working' : '⚠️ Tracking Issues') :
       '❌ Detection Issues'
     ctx.fillStyle = totalDetections > 0 && totalTracks > 0 ? '#00ff00' : '#ff6666'
-    ctx.fillText(healthText, legendX + 105, legendY + 37)
+    ctx.fillText(
+      fitCanvasText(ctx, healthText, legendMaxTextWidth),
+      legendTextX,
+      legendY + 65
+    )
 
     // SYNC STATUS - More visible
     ctx.font = 'bold 12px Arial'
     ctx.fillStyle = syncedData ? '#00ff00' : '#ffaa00'
-    ctx.fillText(syncedData ? '✅ SYNCED' : '⚠️ FALLBACK', legendX + 5, legendY + 65)
+    ctx.fillText(syncedData ? '✅ SYNCED' : '⚠️ FALLBACK', legendTextX, legendY + 84)
   }
 
   // Update overlay when data changes

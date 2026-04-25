@@ -610,31 +610,24 @@ export function CombinedViewTab({
                 {(visionMetadata.active_stream_ids || [0, 1]).map((streamId: number, index: number) => {
                   const numStreams = visionMetadata.num_streams || 2
                   const gridCols = numStreams === 1 ? 1 : numStreams <= 2 ? 2 : 2
+                  const gridRows = numStreams <= 2 ? 1 : 2
 
                   // Calculate position in grid
                   const col = index % gridCols
                   const row = Math.floor(index / gridCols)
-
-                  // Position label in appropriate corner of each stream
-                  const isTopRow = row === 0
-                  const isLeftCol = col === 0
-
-                  let positionClasses = 'absolute '
-                  if (isTopRow && isLeftCol) {
-                    positionClasses += 'top-4 left-4'
-                  } else if (isTopRow && !isLeftCol) {
-                    positionClasses += 'top-4 right-4'
-                  } else if (!isTopRow && isLeftCol) {
-                    positionClasses += 'bottom-4 left-4'
-                  } else {
-                    positionClasses += 'bottom-4 right-4'
+                  const labelStyle = {
+                    left: `calc(${(col / gridCols) * 100}% + 1rem)`,
+                    top: `calc(${(row / gridRows) * 100}% + 1rem)`,
                   }
-
 
                   const camera = cameras.find(c => c.id === streamId)
 
                   return (
-                    <div key={streamId} className={`${positionClasses} bg-black bg-opacity-75 text-white px-3 py-2 rounded-lg`}>
+                    <div
+                      key={streamId}
+                      className="absolute bg-black bg-opacity-75 text-white px-3 py-2 rounded-lg"
+                      style={labelStyle}
+                    >
                       <div className="font-semibold text-sm flex items-center">
                         <span className={`w-2 h-2 rounded-full mr-2 ${
                           index === 0 ? 'bg-green-400' :

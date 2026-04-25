@@ -29,7 +29,7 @@ def cli():
     "-d",
     default="rfdetr",
     type=str,
-    help="Object detector to use (rfdetr, dummy, or custom)",
+    help="Object detector to use (rfdetr, yolo, dummy, or custom)",
 )
 @click.option(
     "--tracker",
@@ -155,6 +155,7 @@ def list():
     for detector in list_detectors():
         desc = {
             "rfdetr": "RF-DETR person detector",
+            "yolo": "Ultralytics YOLO26 detector",
             "dummy": "Test detector that generates random detections",
         }.get(detector, "Custom detector")
         detectors_table.add_row(detector, desc)

@@ -524,14 +524,16 @@ class VisionAPI:
         if not self.config:
             return
 
-        current_config_dict = self.config.model_dump()
+        def deep_merge(target: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
+            for key, value in update.items():
+                if isinstance(value, dict) and isinstance(target.get(key), dict):
+                    deep_merge(target[key], value)
+                else:
+                    target[key] = value
+            return target
 
-        for key, value in config_update.items():
-            if key in current_config_dict and isinstance(current_config_dict[key], dict):
-                for sub_key, sub_value in value.items():
-                    current_config_dict[key][sub_key] = sub_value
-            else:
-                current_config_dict[key] = value
+        current_config_dict = self.config.model_dump()
+        deep_merge(current_config_dict, config_update)
 
         self.config = VisionSystemConfig(**current_config_dict)
 
@@ -680,7 +682,7 @@ def create_vision_api(
     Create a new VisionAPI instance with specified detector, tracker and merger types.
 
     Args:
-        detector_type: Type of detector to use ("rfdetr", "dummy", or None for default)
+        detector_type: Type of detector to use ("rfdetr", "yolo", "dummy", or None for default)
         tracker_type: Type of tracker to use ("deepsort", "bytetrack", "dummy", or None for default)
         merger_type: Type of merger to use ("bev_cluster", or None for default)
         calibration_file: Optional path to calibration data file

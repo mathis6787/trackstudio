@@ -12,7 +12,22 @@ TrackStudio now separates detection from tracking:
 }
 ```
 
-`detector_type` chooses the object detector. Today the real detector is `rfdetr`.
+`detector_type` chooses the object detector. The real detectors are:
+
+- `rfdetr`
+- `yolo`
+
+The `yolo` detector currently supports YOLO26 detection checkpoints:
+
+```text
+yolo26n.pt
+yolo26s.pt
+yolo26m.pt
+yolo26l.pt
+yolo26x.pt
+```
+
+Use the `yolo_detector.model.weights` setting to switch between them. `n` is the fastest/lightest model and `x` is the slowest/heaviest model.
 
 `tracker_type` chooses the single-camera tracking algorithm. Today the real trackers are:
 
@@ -28,6 +43,8 @@ yolo   -> botsort
 ```
 
 If YOLO later becomes both the primary detector and the production tracking path, it may be worth adding a separate YOLO-native fast path that uses Ultralytics' built-in BoT-SORT integration. That path should be treated as an optimized YOLO-specific mode, not as the default TrackStudio tracker abstraction.
+
+TrackStudio only supports YOLO26 detection models in the detector interface right now. Segmentation, pose, OBB, and classification checkpoints are intentionally not wired into tracking yet because the current trackers consume axis-aligned detection boxes.
 
 The vision pipeline runs independently of the source stream FPS:
 
