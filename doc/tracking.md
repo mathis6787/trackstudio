@@ -82,6 +82,110 @@ If the detector is specifically YOLO and the goal is a YOLO-only optimized produ
 
 ---
 
+## Detector Model vs Tracker Parameters
+
+Tracker parameters are not fully independent from the detector model. Trackers do not start from raw video pixels. They mostly consume detector output:
+
+```text
+bbox + confidence + class_id
+```
+
+Changing from `yolo26n.pt` to `yolo26l.pt`, or from YOLO to RF-DETR, can change:
+
+- how many people are detected
+- how often detections are missed
+- how stable the boxes are from frame to frame
+- how confidence scores are distributed
+- how many false positives appear
+
+Because of that, tracker settings that work well with one detector are a good starting point for another detector, but they are not guaranteed to stay optimal.
+
+### YOLO Model Size
+
+YOLO26 model size affects tracker behavior:
+
+| Model | Expected detector behavior | Tracker impact |
+|---|---|---|
+| `yolo26n.pt` | Fastest, lightest, more likely to miss hard people or produce lower confidence | May need lower thresholds, longer lost-track buffers, and more tolerant matching. |
+| `yolo26s.pt` / `yolo26m.pt` | Middle ground | Usually the best place to start for tuning. |
+| `yolo26l.pt` / `yolo26x.pt` | Slower, stronger detections, often higher confidence and better boxes | Can often use stricter thresholds, but processing latency may increase. |
+
+If the video already runs slowly, do not assume a larger model is better. Better detection accuracy only helps if the system can still process frames fast enough for the scene.
+
+### RF-DETR vs YOLO
+
+RF-DETR and YOLO can both detect people, but they may produce different box shapes, confidence scores, and miss/false-positive patterns. A ByteTrack or BoT-SORT config tuned on YOLO should be retested before using it with RF-DETR.
+
+Treat tuned parameters as tied to this combination:
+
+```text
+detector_type + detector weights + detector thresholds + tracker_type + tracker thresholds + vision_fps
+```
+
+Example:
+
+```text
+yolo + yolo26s.pt + confidence_threshold=0.25 + bytetrack + vision_fps=10
+```
+
+That is a different tuning profile from:
+
+```text
+yolo + yolo26l.pt + confidence_threshold=0.35 + bytetrack + vision_fps=10
+```
+
+and also different from:
+
+```text
+rfdetr + confidence_threshold=0.25 + bytetrack + vision_fps=10
+```
+
+### Most Detector-Sensitive Settings
+
+Start by tuning detector settings first:
+
+| Config field | Why it matters |
+|---|---|
+| `confidence_threshold` | Controls which detections reach the tracker. Too high causes missed people; too low can create false tracks. |
+| `nms_iou_threshold` | Controls duplicate box suppression. Bad NMS can create duplicate people or remove valid close people. |
+| `min_box_width` / `min_box_height` | Filters tiny detections. Useful for noise, but can remove distant people. |
+| `max_aspect_ratio` | Filters unusual boxes. Useful for bad detections, but can remove bent/partial people. |
+| `yolo_detector.model.image_size` | Larger image size can improve small/distant people, but increases latency. |
+
+Then tune tracker settings:
+
+| Tracker | Sensitive fields |
+|---|---|
+| ByteTrack | `track_activation_threshold`, `lost_track_buffer`, `minimum_matching_threshold`, `frame_rate` |
+| BoT-SORT | `track_high_thresh`, `track_low_thresh`, `new_track_thresh`, `track_buffer`, `match_thresh`, `proximity_thresh`, `appearance_thresh`, `frame_rate` |
+| DeepSORT | `tracker_max_age`, `tracker_min_hits`, `tracker_max_iou_distance`, `tracker_max_cosine_distance`, `tracker_matching_threshold` |
+
+### Recommended Test Order
+
+1. Choose one detector and one model weight.
+   Start with `yolo26s.pt` or `yolo26m.pt` if you are testing YOLO. Use `yolo26n.pt` if speed is the main constraint.
+
+2. Tune detector quality before tracker quality.
+   Watch raw detections. Fix missed people, duplicate boxes, and obvious false positives before changing tracker settings.
+
+3. Tune one tracker at a time.
+   For ByteTrack, start with `track_activation_threshold`, `minimum_matching_threshold`, and `lost_track_buffer`.
+
+4. Keep `vision_fps` and tracker `frame_rate` aligned.
+   If `vision_fps = 10`, keep ByteTrack/BoT-SORT `frame_rate = 10`.
+
+5. Save tuning profiles by detector/model.
+   Do not assume one profile is universal. Name your test notes like `yolo26s_bytetrack_store_daylight` or `rfdetr_botsort_aisle_occlusion`.
+
+6. Retest when changing detector family, YOLO weight, image size, or confidence threshold.
+   A full retune may not be needed, but validation is required.
+
+### Practical Rule
+
+If you found good ByteTrack settings for your environment with `yolo26n.pt`, use them as the first baseline for `yolo26s.pt` or `yolo26l.pt`, but verify the results again. If you switch to RF-DETR, use the old settings only as a rough starting point.
+
+---
+
 ## ByteTrack Settings
 
 These are the ByteTrack settings shown in the UI when `tracker_type` is `bytetrack`.
@@ -284,3 +388,138 @@ ReID reliability depends on:
 - camera angle and resolution
 - lighting conditions
 - how much of the person is visible
+
+### Anti-Shoplifting Behavior Systems
+
+For anti-shoplifting, a single-camera ID reset is not automatically catastrophic, but it depends where the reset happens in the pipeline.
+
+If a person disappears behind a display and comes back with a new local track ID, the raw single-camera tracker lost continuity. That can hurt features that depend on a continuous per-person timeline:
+
+- linger time
+- path history
+- hand-to-shelf movement sequence
+- object interaction sequence
+- pose sequence over time
+
+This is less serious if a later stage can merge track fragments back together using signals such as:
+
+- same camera
+- close time gap
+- close image or BEV position
+- appearance/ReID similarity
+- motion direction
+- camera zone
+- pose continuity
+- object interaction continuity
+- height or box-size consistency
+
+Do not make an LSTM, XGBoost model, or other behavior classifier consume raw tracker IDs blindly. A better architecture is:
+
+```text
+detector / pose model
+-> single-camera tracker
+-> BEV transform
+-> same-camera and cross-camera tracklet merging
+-> customer session builder
+-> behavior feature extraction
+-> LSTM / XGBoost / rules / Bayesian layer
+-> suspicious behavior score
+```
+
+The behavior model should usually run after tracklet merging or after a customer-session builder. Otherwise, every occlusion can split a customer's history into separate identities.
+
+ReID failures are normal in retail scenes because shelves, displays, carts, similar clothing, camera angle changes, low-resolution crops, and lighting changes all reduce appearance reliability. Do not rely on ReID alone for customer identity. Combine several weak signals instead.
+
+A Bayesian layer can help by keeping identity and behavior as probabilities instead of hard decisions. For example:
+
+```text
+P(same_customer | appearance, BEV distance, time gap, direction, zone)
+```
+
+Practical rule: occasional ID switches are acceptable if there is a session or tracklet merger after tracking. They are a big problem only if downstream behavior models treat every tracker ID as a final customer identity.
+
+---
+
+## Current Camera Merging
+
+TrackStudio currently uses `bev_cluster` for multi-camera merging.
+
+The current flow is:
+
+```text
+detector
+-> single-camera tracker
+-> BEV transform
+-> BEV cluster merger
+-> global_id assignment
+```
+
+Each camera first produces local tracks. For example:
+
+```text
+camera 0 local track 1
+camera 1 local track 3
+```
+
+The BEV transformer converts each local track into bird's-eye-view coordinates using the bottom-center of the bounding box, which approximates the person's feet.
+
+The merger then receives all BEV tracks from all cameras. It clusters tracks from different cameras only. It intentionally does not merge tracks from the same camera during this clustering step.
+
+Two tracks from different cameras are considered the same person when:
+
+- their BEV positions are close enough, based on `spatial_threshold`
+- and, if ReID features are available, their appearance distance is below `appearance_threshold`
+
+When tracks are clustered, the merger assigns a shared `global_id`. That means separate local camera tracks can become one global person identity.
+
+### What Current Merging Is Good For
+
+The current `bev_cluster` merger is useful for:
+
+- approximate cross-camera identity
+- merging people visible in overlapping camera views
+- simple BEV-level global tracking
+- debugging camera calibration and multi-camera alignment
+- early testing of detector/tracker combinations
+
+### Current Limitations
+
+The current merger is not yet a full customer-session system.
+
+It is weak for:
+
+- reconnecting someone after a long occlusion
+- reconnecting a same-camera ID switch
+- building a durable customer session over minutes
+- preserving behavior history through shelves, displays, carts, or crowds
+- producing high-confidence identity continuity for suspicious-behavior analysis
+
+If camera 0 loses a person behind a display and the tracker creates a new local ID, the current merger will usually create a new global ID too. It does not yet compare a new same-camera tracklet against old global tracks using time gap, BEV distance, direction, appearance, and zone context.
+
+Also, the merger configuration currently exposes `appearance_weight`, `smoothing_alpha`, and `velocity_alpha`, but the current implementation is mostly hard spatial gating plus optional ReID gating. Those fields should be treated as future/improvement parameters until the merger uses them directly.
+
+### Anti-Shoplifting Recommendation
+
+For anti-shoplifting, the current merger is a good foundation, but it should be followed by a stronger customer-session builder:
+
+```text
+BEV cluster merger
+-> same-camera tracklet reconnection
+-> cross-camera session association
+-> customer session timeline
+-> behavior feature extraction
+-> LSTM / XGBoost / rules / Bayesian layer
+```
+
+That session builder should combine several weak signals:
+
+- BEV distance
+- time gap
+- motion direction
+- camera zone
+- appearance/ReID similarity
+- pose continuity
+- object-interaction continuity
+- height or box-size consistency
+
+For behavior detection, do not treat `global_id` as final truth. Treat it as the current best identity estimate. Downstream behavior models should be able to handle uncertain identity and fragmented tracklets.
